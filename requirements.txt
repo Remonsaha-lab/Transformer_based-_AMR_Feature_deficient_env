@@ -37,7 +37,7 @@ torch-graph-components==0.1.1
 torch-ransac3d==2.0.0
 
 # DIODE RGB-D conversion and label utilities
-opencv-contrib-python==4.13.0.92
+opencv-contrib-python==4.11.0.86
 Pillow==12.2.0
 transformers==4.43.4
 
