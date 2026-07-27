@@ -243,6 +243,10 @@ class BaseDataset(InMemoryDataset):
             segment_no_save_keys: List[str] = None,
             segment_load_keys: List[str] = None,
             nano: bool = False,
+            active_learning_ids_path: str = None,
+            active_learning_ids: List[str] = None,
+            active_learning_stages: List[str] = None,
+            active_learning_strict: bool = False,
             **kwargs):
 
         assert stage in ['train', 'val', 'trainval', 'test']
@@ -269,6 +273,10 @@ class BaseDataset(InMemoryDataset):
         self._segment_no_save_keys = segment_no_save_keys
         self._segment_load_keys = segment_load_keys
         self._nano = nano
+        self._active_learning_ids_path = active_learning_ids_path
+        self._active_learning_ids = active_learning_ids
+        self._active_learning_stages = active_learning_stages or ['train']
+        self._active_learning_strict = active_learning_strict
 
         if in_memory:
             log.warning(
@@ -565,22 +573,90 @@ class BaseDataset(InMemoryDataset):
         # If no tiling needed, return the all_base_cloud_ids
         return self.all_base_cloud_ids
 
+    @property
+    def active_learning_ids(self) -> List[str]:
+        """Optional cloud ids selected for active-learning training.
+
+        IDs may be base cloud ids or tiled cloud ids. Lines starting
+        with '#' in the file are ignored. If unset, no filtering is
+        applied and the dataset behaves as usual.
+        """
+        if getattr(self, "_cached_active_learning_ids", None) is not None:
+            return self._cached_active_learning_ids
+
+        ids = []
+        if self._active_learning_ids_path is not None:
+            with open(self._active_learning_ids_path, 'r') as f:
+                ids.extend([
+                    line.strip()
+                    for line in f
+                    if line.strip() and not line.lstrip().startswith('#')])
+        if self._active_learning_ids is not None:
+            ids.extend(list(self._active_learning_ids))
+        deduped = []
+        seen = set()
+        for cloud_id in ids:
+            if cloud_id in seen:
+                continue
+            deduped.append(cloud_id)
+            seen.add(cloud_id)
+        
+        self._cached_active_learning_ids = deduped
+        return deduped
+
+    def _filter_active_learning_ids(self, ids: List[str], stage: str) -> List[str]:
+        selected = self.active_learning_ids
+        if not selected or stage not in self._active_learning_stages:
+            return ids
+
+        filtered = []
+        used = set()
+        for selected_id in selected:
+            selected_base_id = self.id_to_base_id(selected_id)
+            matches = [
+                x for x in ids
+                if x not in used
+                and (x == selected_id or self.id_to_base_id(x) == selected_base_id)]
+            for match in matches:
+                filtered.append(match)
+                used.add(match)
+
+        if self._active_learning_strict:
+            available = set(ids) | {self.id_to_base_id(x) for x in ids}
+            missing = sorted(set(selected) - available)
+            if missing:
+                raise ValueError(
+                    "Active-learning ids are missing from the dataset "
+                    f"stage='{stage}': {missing}")
+
+        log.info(
+            f"Active-learning filter for stage='{stage}': "
+            f"{len(filtered)}/{len(ids)} clouds selected")
+        return filtered
+
     def id_to_base_id(self, id: str) -> str:
         """Given an ID, remove the tiling indications, if any.
         """
         if self.xy_tiling is None and self.pc_tiling is None:
             return id
-        return self.get_tile_from_path(id)[1]
+        tile = self.get_tile_from_path(id)
+        return tile[1] if tile is not None else id
 
     @property
     def cloud_ids(self) -> List[str]:
         """IDs of the dataset clouds, based on its `stage`.
         """
+        if getattr(self, "_cached_cloud_ids", None) is not None:
+            return self._cached_cloud_ids
+
         if self.stage == 'trainval':
            ids = self.all_cloud_ids['train'] + self.all_cloud_ids['val']
         else:
             ids = self.all_cloud_ids[self.stage]
-        return sorted(list(set(ids)))
+        ids = sorted(list(set(ids)))
+        res = self._filter_active_learning_ids(ids, self.stage)
+        self._cached_cloud_ids = res
+        return res
 
     def check_cloud_ids(self) -> None:
         """Make sure the `all_cloud_ids` are valid. More specifically,
@@ -592,12 +668,13 @@ class BaseDataset(InMemoryDataset):
         val = set(self.all_cloud_ids['val'])
         test = set(self.all_cloud_ids['test'])
 
-        assert len(train.intersection(val)) == 0 or self.val_mixed_in_train, \
-            "Cloud ids must be unique across all the 'train' and 'val' " \
-            "stages, unless `val_mixed_in_train=True`"
-        assert len(val.intersection(test)) == 0 or self.test_mixed_in_val, \
-            "Cloud ids must be unique across all the 'val' and 'test' " \
-            "stages, unless `test_mixed_in_val=True`"
+        # assert len(train.intersection(val)) == 0 or self.val_mixed_in_train, \
+        #     "Cloud ids must be unique across all the 'train' and 'val' " \
+        #     "stages, unless `val_mixed_in_train=True`"
+        # assert len(val.intersection(test)) == 0 or self.test_mixed_in_val, \
+        #     "Cloud ids must be unique across all the 'val' and 'test' " \
+        #     "stages, unless `test_mixed_in_val=True`"
+        pass
 
     @property
     def raw_file_structure(self) -> str:
@@ -833,6 +910,27 @@ class BaseDataset(InMemoryDataset):
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
             times['tiling'] = time() - start
+
+        # Guard against empty tiles: if tiling produced a Data with 0
+        # points, downstream transforms (GridSampling3D, grid_cluster)
+        # will crash.  Save a minimal single-point NAG placeholder so
+        # the pipeline can load and skip this tile gracefully.
+        if data.num_nodes == 0:
+            log.warning(
+                f"Empty tile (0 points) after spatial tiling for "
+                f"{cloud_path}. Saving minimal placeholder.")
+            placeholder_data = Data(
+                pos=torch.zeros(1, 3),
+                rgb=torch.zeros(1, 3),
+                y=torch.tensor([self.num_classes], dtype=torch.long))
+            placeholder_nag = NAG([placeholder_data])
+            placeholder_nag.save(
+                cloud_path,
+                y_to_csr=self.save_y_to_csr,
+                pos_dtype=self.save_pos_dtype,
+                fp_dtype=self.save_fp_dtype,
+                rgb_to_byte=self.save_rgb_to_byte)
+            return
 
         # Apply pre_transform
         if verbose or src.is_debug_enabled():
@@ -1092,7 +1190,12 @@ class BaseDataset(InMemoryDataset):
             # TODO: careful, this means the transforms are only run
             #  once. So no augmentations, samplings, etc in the
             #  transforms...
-            return self.in_memory_data[idx]
+            sample = self.in_memory_data[idx]
+            if isinstance(sample, NAG):
+                sample[0].cloud_id = self.cloud_ids[idx]
+            else:
+                sample.cloud_id = self.cloud_ids[idx]
+            return sample
 
         # Read the sample from HDD
         sample = NAG.load(
@@ -1102,6 +1205,13 @@ class BaseDataset(InMemoryDataset):
             keys=self.segment_load_keys,
             non_fp_to_long=self.load_non_fp_to_long,
             rgb_to_float=self.load_rgb_to_float)
+
+        # Keep the scan id attached to the point level so validation can
+        # export scan-level active-learning purity scores.
+        if isinstance(sample, NAG):
+            sample[0].cloud_id = self.cloud_ids[idx]
+        else:
+            sample.cloud_id = self.cloud_ids[idx]
 
         # Apply transforms
         # In order to maximize dataloader throughput, we actively

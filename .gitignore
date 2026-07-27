@@ -173,3 +173,17 @@ local
 ckpt
 outputs
 wandb
+
+# Ignore dataset sample files
+train/
+**/train/
+
+# Ignore checkpoints
+*.ckpt
+*.pt
+*.pth
+
+# Ignore screenshots / debug images
+ScreenCapture_*
+ScreenCamera_*
+*.png

@@ -26,6 +26,14 @@ contour_prior_knn_r: 2
 # we set `point_hf` to `partition_hf`.
 point_hf: ${datamodule.partition_hf}
 
+# Stage 1 active-learning support. Leave null for standard full-dataset
+# preprocessing/training. Set active_learning_ids_path to a text file with one
+# scan id per line to preprocess and train only that subset.
+active_learning_ids_path: null
+active_learning_ids: null
+active_learning_stages: ['train']
+active_learning_strict: False
+
 pre_transform:
     - transform: DataTo
       params:

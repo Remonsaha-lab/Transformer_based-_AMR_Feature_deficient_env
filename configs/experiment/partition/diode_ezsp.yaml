@@ -1,0 +1,28 @@
+# @package _global_
+
+defaults:
+  - override /datamodule: partition/diode_ezsp.yaml
+  - override /model: partition/default_ezsp.yaml
+  - override /trainer: gpu.yaml
+
+optimized_metric: "val/omiou"
+
+trainer:
+  max_epochs: 50
+  check_val_every_n_epoch: 5
+
+model:
+  partition_criterion:
+    adaptive_sampling_ratio: 0.9
+    
+  net:
+    point_cnn_kernel_size: 3
+
+logger:
+  wandb:
+    project: ezsp_diode
+    name: partition
+
+callbacks:
+  rich_progress_bar:
+    _target_: pytorch_lightning.callbacks.TQDMProgressBar

@@ -1,0 +1,10 @@
+indoors/scene_00000/scan_00000/00000_00000_indoors_010_050
+indoors/scene_00000/scan_00000/00000_00000_indoors_020_050
+indoors/scene_00000/scan_00000/00000_00000_indoors_030_030
+indoors/scene_00000/scan_00000/00000_00000_indoors_030_040
+indoors/scene_00000/scan_00000/00000_00000_indoors_030_050
+indoors/scene_00000/scan_00000/00000_00000_indoors_040_000
+indoors/scene_00000/scan_00000/00000_00000_indoors_040_010
+indoors/scene_00000/scan_00000/00000_00000_indoors_040_020
+indoors/scene_00000/scan_00000/00000_00000_indoors_040_030
+indoors/scene_00000/scan_00000/00000_00000_indoors_040_040

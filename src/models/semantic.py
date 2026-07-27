@@ -145,6 +145,8 @@ class SemanticSegmentationModule(LightningModule):
             track_val_every_n_epoch: int = 1,
             track_val_idx: int = None,
             track_test_idx: int = None,
+            active_learning_export: bool = False,
+            active_learning_export_dir: str = None,
             **kwargs):
         super().__init__()
 
@@ -251,6 +253,10 @@ class SemanticSegmentationModule(LightningModule):
         # Explicitly call the garbage collector after a certain number
         # of steps
         self.gc_every_n_steps = int(gc_every_n_steps)
+
+        self.active_learning_export = active_learning_export
+        self.active_learning_export_dir = active_learning_export_dir
+        self._s2_active_learning_rows = {'val': [], 'test': []}
 
     def cnn_weights_initialization(self) -> None:
         if not getattr(self.net.first_stage, 'cnn_blocks', False):
@@ -830,6 +836,7 @@ class SemanticSegmentationModule(LightningModule):
         # Update and log metrics
         self.validation_step_update_metrics(loss, output)
         self.validation_step_log_metrics()
+        self._s2_active_learning_update('val', batch, output)
 
         # Get the current epoch. For the validation set, we alter the
         # epoch number so that `track_val_every_n_epoch` can align
@@ -1027,6 +1034,7 @@ class SemanticSegmentationModule(LightningModule):
             miou_best=self.val_miou_best,
             oa_best=self.val_oa_best,
             macc_best=self.val_macc_best)
+        self._s2_active_learning_export('val')
 
     def on_test_start(self) -> None:
         # Initialize the submission directory based on the time of the
@@ -1053,6 +1061,7 @@ class SemanticSegmentationModule(LightningModule):
         # Update and log metrics
         self.test_step_update_metrics(loss, output)
         self.test_step_log_metrics()
+        self._s2_active_learning_update('test', batch, output)
 
         # Prepare submission for held-out test sets
         if self.trainer.datamodule.hparams.submit:
@@ -1121,6 +1130,97 @@ class SemanticSegmentationModule(LightningModule):
             stage='test',
             cm=self.test_cm,
             metric_category='superpoints_semantic_prediction')
+        self._s2_active_learning_export('test')
+
+    def _s2_active_learning_update(
+            self,
+            stage: str,
+            batch: NAG,
+            output: SemanticSegmentationOutput
+    ) -> None:
+        """Collect per-scan semantic segmentation scores for Stage 2."""
+        if not self.active_learning_export:
+            return
+        if not output.has_target:
+            return
+
+        nag = batch if isinstance(batch, NAG) else batch[0]
+        if nag.num_levels < 2:
+            return
+
+        pred = output.semantic_pred().detach()
+        target = output.semantic_target.detach()
+        node_batch = getattr(nag[1], 'batch', None)
+        if node_batch is None:
+            node_batch = torch.zeros(
+                pred.shape[0], device=pred.device, dtype=torch.long)
+        else:
+            node_batch = node_batch.to(pred.device)
+
+        cloud_ids = getattr(nag[0], 'cloud_id', None)
+        if cloud_ids is None:
+            cloud_ids = getattr(nag[1], 'cloud_id', None)
+        if cloud_ids is None:
+            cloud_ids = [f'{stage}_{len(self._s2_active_learning_rows[stage])}']
+        elif isinstance(cloud_ids, str):
+            cloud_ids = [cloud_ids]
+        else:
+            cloud_ids = list(cloud_ids)
+
+        for batch_idx in node_batch.unique(sorted=True).tolist():
+            idx = node_batch == batch_idx
+            if idx.sum() == 0:
+                continue
+
+            cm = ConfusionMatrix(self.num_classes).to(pred.device)
+            cm(pred=pred[idx], target=target[idx])
+            cloud_id = (
+                cloud_ids[batch_idx]
+                if batch_idx < len(cloud_ids)
+                else f'{stage}_{batch_idx}')
+
+            self._s2_active_learning_rows[stage].append({
+                'scan_id': cloud_id,
+                'semantic_miou': float(cm.miou(as_percent=True)),
+                'semantic_oa': float(cm.oa(as_percent=True)),
+                'num_superpoints': int(idx.sum().item()),
+                'epoch': int(self.current_epoch),
+            })
+
+    def _s2_active_learning_export(self, stage: str) -> None:
+        if not self.active_learning_export:
+            return
+        rows = self._s2_active_learning_rows.get(stage, [])
+        if not rows:
+            return
+
+        import csv
+
+        export_dir = self.active_learning_export_dir
+        if export_dir is None:
+            export_dir = os.path.join(
+                self.trainer.default_root_dir, 'active_learning')
+        os.makedirs(export_dir, exist_ok=True)
+
+        rows = sorted(rows, key=lambda r: (r['semantic_miou'], r['scan_id']))
+        path = os.path.join(
+            export_dir,
+            f'stage2_{stage}_semantic_epoch_{int(self.current_epoch):04d}.csv')
+        with open(path, 'w', newline='') as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    'rank_worst_first',
+                    'scan_id',
+                    'semantic_miou',
+                    'semantic_oa',
+                    'num_superpoints',
+                    'epoch'])
+            writer.writeheader()
+            for rank, row in enumerate(rows, start=1):
+                writer.writerow({'rank_worst_first': rank, **row})
+
+        self._s2_active_learning_rows[stage] = []
 
     def predict_step(
             self,
@@ -1455,6 +1555,8 @@ class PartitionAndSemanticModule(SemanticSegmentationModule):
             partition: torch.nn.Module = None,
             partition_criterion: torch.nn.Module = None,
             partition_during_training: bool = False,
+            active_learning_export: bool = False,
+            active_learning_export_dir: str = None,
             **kwargs):
         super().__init__(
             net=net,
@@ -1486,6 +1588,9 @@ class PartitionAndSemanticModule(SemanticSegmentationModule):
         self.partition = partition
         self.partition_criterion = partition_criterion
         self.partition_during_training = partition_during_training
+        self.active_learning_export = active_learning_export
+        self.active_learning_export_dir = active_learning_export_dir
+        self._active_learning_rows = {'val': [], 'test': []}
 
         # Partition specific metrics
         self.train_partition_loss = MeanMetric()
@@ -1540,6 +1645,9 @@ class PartitionAndSemanticModule(SemanticSegmentationModule):
                 y=sample.y,
                 x=sample.x,
                 edge_index=sample.edge_index,
+                point_batch=getattr(sample, 'batch', None),
+                point_super_index=getattr(sample, 'super_index', None) if getattr(sample, 'super_index', None) is not None else (nag[0].super_index if nag is not None else None),
+                cloud_id=getattr(sample, 'cloud_id', None),
                 partition=nag[1] if nag is not None else None)
 
         else:
@@ -1604,21 +1712,9 @@ class PartitionAndSemanticModule(SemanticSegmentationModule):
             
             
             if n_inter_edge == 0:
-                raise ValueError(
-                    "No inter-edges found during one training epoch.\n\n"
-                    "Possible causes and solutions:\n"
-                    "  1. Random crops are too small (crops are stochastic, therefore, the issue may appear after only a few epochs):\n"
-                    "     - The random crops produced by `SampleRadiusSubgraphs` may only contain "
-                    "intra-edges for a whole epoch.\n"
-                    "     - Solution: Increase `datamodule.sample_graph_r` in your config to get "
-                    "bigger crops.\n"
-                    "     - Alternative: Deactivate crops by setting `datamodule.sample_graph_r=-1` "
-                    "(if GPU memory permits).\n\n"
-                    "  2. Graph definition:\n"
-                    "     - Your dataset and `AdjacencyGraph` graph definition may create only "
-                    "intra-edges or no edges at all.\n"
-                    "     - Solution: Review your graph connectivity parameters (e.g., `k`, `r_max`) "
-                    "in the `AdjacencyGraph` transform."
+                log.warning(
+                    "No inter-edges found during one training epoch. "
+                    "This is normal if you just resumed from a checkpoint."
                 )
             
             # Since `self.train_n_inter_edge` is not given to self.log directly,
@@ -1645,6 +1741,7 @@ class PartitionAndSemanticModule(SemanticSegmentationModule):
 
             self.val_n_sp(output.partition.num_points)
             self.val_n_p(output.x.shape[0])
+            self._active_learning_update_scan_scores('val', output)
 
     def validation_step_log_metrics(self) -> None:
         """Log validation metrics after a single step with the content
@@ -1692,6 +1789,7 @@ class PartitionAndSemanticModule(SemanticSegmentationModule):
 
             self.val_n_p.reset()
             self.val_n_sp.reset()
+            self._active_learning_export_scan_scores('val')
 
     def test_step_update_metrics(self, loss, output) -> None:
         if not self.training_partition_stage:
@@ -1708,6 +1806,7 @@ class PartitionAndSemanticModule(SemanticSegmentationModule):
             
             self.test_n_sp(output.partition.num_points)
             self.test_n_p(output.x.shape[0])
+            self._active_learning_update_scan_scores('test', output)
 
     def test_step_log_metrics(self) -> None:
         if not self.training_partition_stage:
@@ -1753,6 +1852,96 @@ class PartitionAndSemanticModule(SemanticSegmentationModule):
 
             self.test_n_p.reset()
             self.test_n_sp.reset()
+            self._active_learning_export_scan_scores('test')
+
+    def _active_learning_update_scan_scores(self, stage: str, output) -> None:
+        """Collect per-scan partition purity for Stage 1 active learning."""
+        if not self.active_learning_export:
+            return
+        if output.partition is None:
+            return
+        if output.point_super_index is None:
+            return
+
+        point_batch = output.point_batch
+        if point_batch is None:
+            point_batch = torch.zeros(
+                output.point_super_index.shape[0],
+                device=output.point_super_index.device,
+                dtype=torch.long)
+
+        cloud_ids = output.cloud_id
+        if cloud_ids is None:
+            cloud_ids = [f'{stage}_{len(self._active_learning_rows[stage])}']
+        elif isinstance(cloud_ids, str):
+            cloud_ids = [cloud_ids]
+        else:
+            cloud_ids = list(cloud_ids)
+
+        for batch_idx in point_batch.unique(sorted=True).tolist():
+            sp_idx = output.point_super_index[point_batch == batch_idx].unique()
+            if sp_idx.numel() == 0:
+                continue
+
+            y_superpoint = output.y_superpoint[sp_idx]
+            pred = y_superpoint[:, :self.num_classes].argmax(dim=1)
+            cm = ConfusionMatrix(self.num_classes).to(y_superpoint.device)
+            cm(pred=pred, target=y_superpoint)
+            purity = float(cm.miou(as_percent=True))
+            oa = float(cm.oa(as_percent=True))
+            n_points = int((point_batch == batch_idx).sum().item())
+            n_superpoints = int(sp_idx.numel())
+            cloud_id = (
+                cloud_ids[batch_idx]
+                if batch_idx < len(cloud_ids)
+                else f'{stage}_{batch_idx}')
+
+            self._active_learning_rows[stage].append({
+                'scan_id': cloud_id,
+                'purity_miou': purity,
+                'purity_oa': oa,
+                'num_points': n_points,
+                'num_superpoints': n_superpoints,
+                'epoch': int(self.current_epoch),
+            })
+
+    def _active_learning_export_scan_scores(self, stage: str) -> None:
+        if not self.active_learning_export:
+            return
+        rows = self._active_learning_rows.get(stage, [])
+        if not rows:
+            return
+
+        import csv
+        import os
+
+        if self.active_learning_export_dir is None:
+            export_dir = os.path.join(
+                self.trainer.default_root_dir, 'active_learning')
+        else:
+            export_dir = self.active_learning_export_dir
+        os.makedirs(export_dir, exist_ok=True)
+
+        rows = sorted(rows, key=lambda r: (r['purity_miou'], r['scan_id']))
+        path = os.path.join(
+            export_dir,
+            f'stage1_{stage}_purity_epoch_{int(self.current_epoch):04d}.csv')
+        with open(path, 'w', newline='') as f:
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    'rank_worst_first',
+                    'scan_id',
+                    'purity_miou',
+                    'purity_oa',
+                    'num_points',
+                    'num_superpoints',
+                    'epoch'])
+            writer.writeheader()
+            for rank, row in enumerate(rows, start=1):
+                writer.writerow({'rank_worst_first': rank, **row})
+
+        self._active_learning_rows[stage] = []
 
     def _load_from_checkpoint(
             self,

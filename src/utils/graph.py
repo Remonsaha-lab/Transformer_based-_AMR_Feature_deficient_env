@@ -163,6 +163,13 @@ def subedges(
     # Number of segments
     num_segments = index.max() + 1
 
+    if edge_index.shape[1] == 0:
+        device = points.device
+        return (
+            torch.empty((2, 0), dtype=torch.long, device=device),
+            torch.empty((2, 0), dtype=torch.long, device=device),
+            torch.empty((0,), dtype=torch.long, device=device))
+
     # Recursive call in case chunk is specified. Chunk allows limiting
     # the number of edges processed at once. This might alleviate
     # memory use
@@ -194,6 +201,11 @@ def subedges(
 
         # Combine outputs
         device = points.device
+        if len(out_list) == 0:
+            return (
+                torch.empty((2, 0), dtype=torch.long, device=device),
+                torch.empty((2, 0), dtype=torch.long, device=device),
+                torch.empty((0,), dtype=torch.long, device=device))
         edge_index = torch.cat([elt[0] for elt in out_list], dim=1)
         ST_pairs = torch.cat([elt[1] for elt in out_list], dim=1)
         size = torch.tensor([o[0].shape[1] for o in out_list], device=device)

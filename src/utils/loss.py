@@ -11,7 +11,7 @@ def loss_with_sample_weights(criterion, pred, y, weights):
     reduction_backup = criterion.reduction
     criterion.reduction = 'none'
 
-    weights = weights.float() / weights.sum()
+    weights = weights.float() / (weights.sum() + 1e-8)
 
     loss = criterion(pred, y)
     loss = loss.sum(dim=1) if loss.dim() > 1 else loss
@@ -28,6 +28,9 @@ def loss_with_target_histogram(criterion, pred, y_hist):
     assert pred.shape[0] == y_hist.shape[0]
 
     y_mask = y_hist != 0
+    if y_mask.sum() == 0:
+        return torch.tensor(0.0, device=pred.device, dtype=pred.dtype)
+
     logits_flat = pred.repeat_interleave(y_mask.sum(dim=1), dim=0)
     y_flat = torch.where(y_mask)[1]
     weights = y_hist[y_mask]

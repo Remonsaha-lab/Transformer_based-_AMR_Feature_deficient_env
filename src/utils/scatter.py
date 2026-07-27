@@ -148,6 +148,12 @@ def scatter_nearest_neighbor(
         `chunk_size`. If `0 < chunk_size < 1`, then `edge_index` will be
         divided into parts of `edge_index.shape[1] * chunk_size` or less
     """
+    if edge_index is None or edge_index.numel() == 0 or edge_index.shape[1] == 0:
+        device = points.device
+        candidate = torch.empty((0, points.shape[1]), dtype=points.dtype, device=device)
+        candidate_idx = torch.empty((2, 0), dtype=edge_index.dtype if edge_index is not None else torch.long, device=device)
+        return candidate, candidate_idx
+
     assert edge_index.shape == coalesce(edge_index).shape, \
         "Does not support duplicate edges, please coalesce the edges" \
         " before calling this function"

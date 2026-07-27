@@ -139,9 +139,23 @@ def single_plane_model(pos, random_state=0, residual_threshold=1e-3):
             epsilon=1e-8,
             device=pos.device)
 
+        if result is None or getattr(result, "equation", None) is None:
+            z_min = pos[:, 2].min() if pos.shape[0] > 0 else 0.0
+            def predict_elevation(pos_query):
+                assert is_xyz_tensor(pos_query)
+                return pos_query[:, 2] - z_min
+            return predict_elevation
+
         # result.equation holds: [a, b, c, d] for ax + by + cz + d = 0
         w = result.equation[:-1]
         b = result.equation[-1]
+
+        if w[2] == 0:
+            z_min = pos[:, 2].min() if pos.shape[0] > 0 else 0.0
+            def predict_elevation(pos_query):
+                assert is_xyz_tensor(pos_query)
+                return pos_query[:, 2] - z_min
+            return predict_elevation
 
         def predict_elevation(pos_query):
             assert is_xyz_tensor(pos_query)

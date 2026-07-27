@@ -749,7 +749,17 @@ class RadiusHorizontalGraph(Transform):
             pca_on_cpu,
             margin,
             chunk_size,
-            verbose=False):
+        verbose=False):
+        data = nag[i_level]
+        if (
+                data.num_nodes < 2
+                or data.edge_index is None
+                or data.edge_index.shape[1] == 0):
+            data.edge_index = torch.empty((2, 0), dtype=torch.long, device=nag[0].pos.device)
+            data.edge_attr = torch.empty((0, 7), dtype=nag[0].pos.dtype, device=nag[0].pos.device)
+            nag._list[i_level] = data
+            return nag
+
         # Compute 'subedges', i.e. edges between level-0 points making up
         # the edges between the segments. These will be used for edge
         # features computation. NB: this operation simplifies the
@@ -907,9 +917,10 @@ def _horizontal_graph_by_radius_for_single_level(
 
     # Exit in case the i_level graph contains only one node
     if num_nodes < 2:
-        raise ValueError(
-            f"Input NAG only has 1 node at level={i_level}. Cannot compute "
-            f"radius-based horizontal graph.")
+        data.edge_index = torch.empty((2, 0), dtype=torch.long, device=nag[0].pos.device)
+        data.edge_attr = torch.empty((0, 7), dtype=nag[0].pos.dtype, device=nag[0].pos.device)
+        nag._list[i_level] = data
+        return nag
 
     # Compute the super_index for level-0 points wrt the target level
     super_index = nag.get_super_index(i_level)
@@ -1138,6 +1149,18 @@ def _on_the_fly_horizontal_edge_features(
     a trimmed graph and some precomputed edge attributes.
     """
     keys = sanitize_keys(keys, default=ON_THE_FLY_HORIZONTAL_FEATURES)
+
+    # Exit in case the graph contains only one node or has no edges
+    if data.num_nodes < 2 or data.edge_index is None:
+        data.edge_index = torch.empty((2, 0), dtype=torch.long, device=data.pos.device)
+        num_feats = 0
+        for k in keys:
+            if k in ['mean_off', 'std_off', 'centroid_dir']:
+                num_feats += 3
+            else:
+                num_feats += 1
+        data.edge_attr = torch.empty((0, num_feats), dtype=data.pos.dtype, device=data.pos.device)
+        return data
 
     # Recover the edges between the segments
     se = data.edge_index

@@ -1,156 +1,70 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Local variables
-PROJECT_NAME=spt
-PYTHON=3.8
-TORCH=2.2.0
-CUDA_SUPPORTED=(11.8 12.1)
+# DIODE-only EZ-SP installer.
+# This project uses the repository virtual environment:
+#   /home/remon/EZ_SP_CFDVri/.venv
+# It does not create or activate the old Conda `spt` environment.
 
-# Check if torchsparse should be installed
-INSTALL_TORCHSPARSE=false
-if [[ "$1" == "with_torchsparse" ]]; then
-    INSTALL_TORCHSPARSE=true
-elif [[ -n "$1" ]]; then
-    echo "Unknown argument: $1"
-    echo "Usage: ./install.sh [with_torchsparse]"
-    echo "  with_torchsparse: Install TorchSparse (optional dependency)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "${PROJECT_DIR}/.." && pwd)"
+VENV_DIR="${REPO_DIR}/.venv"
+PYTHON="${VENV_DIR}/bin/python"
+PIP=("${PYTHON}" -m pip)
+
+if [[ ! -x "${PYTHON}" ]]; then
+    echo "ERROR: ${PYTHON} was not found."
+    echo "Create the environment first with:"
+    echo "  python3.10 -m venv ${VENV_DIR}"
     exit 1
 fi
 
-
-# Recover the project's directory from the position of the install.sh
-# script and move there. Not doing so would install some dependencies in
-# the wrong place
-HERE=`dirname $0`
-HERE=`realpath $HERE`
-cd $HERE
-
-
-# Installation of Superpoint Transformer in a conda environment
-echo "_____________________________________________"
-echo
-echo "         🧩 Superpoint Transformer 🤖        "
-echo "                  Installer                  "
-echo
-echo "_____________________________________________"
-echo
-echo
-echo "⭐ Searching for installed CUDA"
-echo
-# Recover the CUDA version using nvcc
-CUDA_VERSION=`nvcc --version | grep release | sed 's/.* release //' | sed 's/, .*//'`
-CUDA_MAJOR=`echo ${CUDA_VERSION} | sed 's/\..*//'`
-CUDA_MINOR=`echo ${CUDA_VERSION} | sed 's/.*\.//'`
-
-# If CUDA version not supported, print error and exit
-if [[ ! " ${CUDA_SUPPORTED[*]} " =~ " ${CUDA_VERSION} " ]]
-then
-    echo "Found CUDA ${CUDA_VERSION} installed, which is not among the supported versions: "`echo ${CUDA_SUPPORTED[*]}`
-    echo "Please update CUDA to one of the supported versions."
+PYTHON_VERSION="$(${PYTHON} -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+if [[ "${PYTHON_VERSION}" != "3.10" ]]; then
+    echo "ERROR: This project environment expects Python 3.10; found ${PYTHON_VERSION}."
     exit 1
 fi
 
-echo
-echo
-echo "⭐ Searching for installed conda"
-echo
-# Recover the path to conda on your machine
-# First search the default '~/miniconda3' and '~/anaconda3' paths. If
-# those do not exist, ask for user input
-CONDA_DIR=`realpath ~/miniconda3`
-if (test -z $CONDA_DIR) || [ ! -d $CONDA_DIR ]
-then
-  CONDA_DIR=`realpath ~/anaconda3`
+CUDA_VERSION=""
+if command -v nvcc >/dev/null 2>&1; then
+    CUDA_VERSION="$(nvcc --version | sed -n 's/.*release \([^,]*\),.*/\1/p' | tail -1)"
+fi
+if [[ "${CUDA_VERSION}" != "12.1" ]]; then
+    echo "ERROR: CUDA 12.1 was expected, but nvcc reported '${CUDA_VERSION:-not found}'."
+    echo "The installed PyTorch/PyG wheels are cu121 wheels."
+    exit 1
 fi
 
-while (test -z $CONDA_DIR) || [ ! -d $CONDA_DIR ]
-do
-    echo "Could not find conda at: "$CONDA_DIR
-    read -p "Please provide your conda install directory: " CONDA_DIR
-    CONDA_DIR=`realpath $CONDA_DIR`
-done
+echo "Using Python: $(${PYTHON} --version)"
+echo "Using CUDA: ${CUDA_VERSION}"
+echo "Using virtual environment: ${VENV_DIR}"
 
-echo "Using conda conda found at: ${CONDA_DIR}/etc/profile.d/conda.sh"
-source ${CONDA_DIR}/etc/profile.d/conda.sh
+"${PIP[@]}" install --upgrade pip setuptools wheel
+"${PIP[@]}" install \
+    --extra-index-url https://download.pytorch.org/whl/cu121 \
+    --find-links https://data.pyg.org/whl/torch-2.2.0+cu121.html \
+    -r "${PROJECT_DIR}/requirements.txt"
 
-echo
-echo
-echo "⭐ Creating conda environment '${PROJECT_NAME}'"
-echo
-# Create deep_view_aggregation environment from yml
-conda create --name ${PROJECT_NAME} python=${PYTHON} -y
-
-# Activate the env
-source ${CONDA_DIR}/etc/profile.d/conda.sh  
-conda activate ${PROJECT_NAME}
-
-echo
-echo
-echo "⭐ Installing conda and pip dependencies"
-echo
-conda install pip nb_conda_kernels -y
-pip install matplotlib
-pip install plotly==5.9.0
-pip install "jupyterlab>=3" "ipywidgets>=7.6" jupyter-dash
-pip install "notebook>=5.3" "ipywidgets>=7.5"
-pip install ipykernel
-pip3 install torch==${TORCH} torchvision --index-url https://download.pytorch.org/whl/cu${CUDA_MAJOR}${CUDA_MINOR}
-pip install torchmetrics==0.11.4
-pip install pyg_lib torch_scatter torch_cluster -f https://data.pyg.org/whl/torch-${TORCH}+cu${CUDA_MAJOR}${CUDA_MINOR}.html
-pip install torch_geometric==2.3.0
-pip install plyfile
-pip install h5py
-pip install colorhash
-pip install seaborn
-pip install numba
-pip install pytorch-lightning
-pip install pyrootutils
-pip install hydra-core --upgrade
-pip install hydra-colorlog
-pip install hydra-submitit-launcher
-pip install "rich<=14.0"
-pip install torch_tb_profiler
-pip install wandb
-pip install open3d
-pip install gdown
-pip install ipyfilechooser
-pip install torch-ransac3d
-pip install pgeof
-pip install pycut-pursuit
-pip install pygrid-graph
-pip install torch-graph-components
-
-echo
-echo
-echo "⭐ Installing FRNN"
-echo
-git clone --recursive https://github.com/lxxue/FRNN.git src/dependencies/FRNN
-
-# install a prefix_sum routine first
-cd src/dependencies/FRNN/external/prefix_sum
-pip install .
-
-# install FRNN
-cd ../../ # back to the {FRNN} directory
-pip install .
-cd ../../../
-
-# install TorchSparse (optional)
-if [[ "$INSTALL_TORCHSPARSE" == true ]]; then
-    echo
-    echo
-    echo "⭐ Installing TorchSparse"
-    echo
-    git clone https://github.com/mit-han-lab/torchsparse.git src/dependencies/torchsparse
-    pip install backports.cached-property
-    pip install rootpath
-    conda install -y google-sparsehash -c bioconda
-    cd src/dependencies/torchsparse
-    pip install .
-    cd ../../../
+# FRNN is compiled locally because it is not distributed as a normal project
+# wheel. Reuse an existing checkout/build when it is already installed.
+FRNN_DIR="${PROJECT_DIR}/src/dependencies/FRNN"
+if ! "${PYTHON}" -c 'import frnn' >/dev/null 2>&1; then
+    if [[ ! -d "${FRNN_DIR}/.git" ]]; then
+        git clone --recursive https://github.com/lxxue/FRNN.git "${FRNN_DIR}"
+    fi
+    (
+        cd "${FRNN_DIR}/external/prefix_sum"
+        "${PIP[@]}" install .
+    )
+    (
+        cd "${FRNN_DIR}"
+        "${PIP[@]}" install .
+    )
+else
+    echo "FRNN is already installed; skipping local compilation."
 fi
 
-# let user know
 echo
-echo
-echo "🚀 Successfully installed SPT"
+echo "DIODE environment installation completed."
+echo "Activate it with: source ${VENV_DIR}/bin/activate"
+echo "Verify it with: ${PYTHON} -c \"import torch, torch_geometric, pgeof, frnn; print(torch.__version__, torch.cuda.is_available())\""

@@ -182,7 +182,9 @@ class BaseDataModule(LightningDataModule):
         """
         
         self.test_dataset = self.dataset_class(
-            self.hparams.data_dir, stage='test',
+            #self.hparams.data_dir, stage='test',
+            self.hparams.data_dir, stage=self.kwargs.get('test_stage', 'test'),
+
             transform=self.test_transform, pre_transform=self.pre_transform,
             on_device_transform=self.on_device_test_transform, **self.kwargs)
 
@@ -272,7 +274,7 @@ class BaseDataModule(LightningDataModule):
     def val_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.val_dataset,
-            batch_size=self.hparams.dataloader.batch_size,
+            batch_size=1,
             num_workers=self.hparams.dataloader.num_workers,
             pin_memory=self.hparams.dataloader.pin_memory,
             persistent_workers=self.hparams.dataloader.persistent_workers,
@@ -281,7 +283,7 @@ class BaseDataModule(LightningDataModule):
     def test_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.test_dataset,
-            batch_size=self.hparams.dataloader.batch_size,
+            batch_size=1,
             num_workers=self.hparams.dataloader.num_workers,
             pin_memory=self.hparams.dataloader.pin_memory,
             persistent_workers=self.hparams.dataloader.persistent_workers,

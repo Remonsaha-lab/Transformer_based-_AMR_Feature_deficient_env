@@ -1,0 +1,19 @@
+# @package datamodule
+defaults:
+  - /datamodule/semantic/diode.yaml # General dataset parameters
+  - /datamodule/partition/diode_ezsp.yaml # Partition parameters
+  - /datamodule/semantic/default_ezsp.yaml # Semantic task parameters for EZ-SP
+
+pretrained_cnn_dim_without_in_dim: [32, 32, 32]
+pretrained_cnn_kernel_size: 3
+
+# Parameter defining the 3 partition levels.
+contour_prior_min_size: [5,30,90]
+
+# Inputs.
+partition_hf:
+ - 'rgb'
+
+post_cnn_point_hf:
+  - 'elevation'
+  - 'rgb'

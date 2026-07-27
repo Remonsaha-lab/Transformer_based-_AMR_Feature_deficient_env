@@ -1,0 +1,64 @@
+# EZ-SP / Superpoint Transformer — DIODE environment
+# Tested with Python 3.10 and CUDA 12.1.
+# The PyTorch and PyG CUDA wheels are installed by install.sh.
+
+--extra-index-url https://download.pytorch.org/whl/cu121
+--find-links https://data.pyg.org/whl/torch-2.2.0+cu121.html
+
+# PyTorch 2.2.0 + CUDA 12.1
+torch==2.2.0+cu121
+torchvision==0.17.0+cu121
+torchaudio==2.2.0+cu121
+
+# PyTorch Geometric and its compiled CUDA extensions
+torch-geometric==2.3.0
+torch-scatter==2.1.2+pt22cu121
+torch-sparse==0.6.18+pt22cu121
+torch-cluster==1.6.3+pt22cu121
+torch-spline-conv==1.2.2+pt22cu121
+
+# Training and scientific computing
+torchmetrics==0.11.4
+pytorch-lightning==2.2.0
+numpy==1.26.4
+scipy==1.15.3
+pandas==2.3.3
+scikit-learn==1.7.2
+h5py==3.16.0
+numba==0.65.1
+
+# DIODE point-cloud processing and geometry
+open3d==0.19.0
+plyfile==1.0.3
+pgeof==0.3.4
+pycut-pursuit==0.1.4
+pygrid-graph==0.0.4
+torch-graph-components==0.1.1
+torch-ransac3d==2.0.0
+
+# DIODE RGB-D conversion and label utilities
+opencv-contrib-python==4.13.0.92
+Pillow==12.2.0
+transformers==4.43.4
+
+# Configuration, execution, and logging
+hydra-core==1.3.2
+hydra-colorlog==1.2.0
+hydra-submitit-launcher==1.2.0
+pyrootutils==1.0.4
+wandb==0.27.2
+rich==15.0.0
+colorhash==2.3.0
+
+# Models, transforms, and visualization
+einops==0.8.2
+kornia==0.8.2
+matplotlib==3.10.9
+seaborn==0.13.2
+plotly==6.8.0
+ipyfilechooser==0.6.0
+ipywidgets==8.1.8
+
+# Utility packages used by the project/scripts
+gdown
+torch_tb_profiler

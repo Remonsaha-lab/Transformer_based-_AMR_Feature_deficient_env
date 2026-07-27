@@ -19,6 +19,11 @@ _point_cnn: ${eval:'[${model.cnn_width}]*${model.cnn_depth} + [${model.cnn_out}]
 # It is only useful to get partition metrics on the training set.
 partition_during_training: False
 
+# When enabled, validation/test writes per-scan Stage 1 partition purity CSVs
+# sorted from worst to best. These files drive active-learning selection.
+active_learning_export: False
+active_learning_export_dir: null
+
 # The same transform `GreedyContourPriorPartition`is defined in `sematnic/default_ezsp.yaml` 
 # for preprocessing the point cloud to learn the semantic of the superpoints.
 partition:

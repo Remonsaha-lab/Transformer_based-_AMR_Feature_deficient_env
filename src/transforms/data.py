@@ -66,6 +66,7 @@ class Cast(Transform):
             pos_dtype=None,
             rgb_to_float=True,
             optimal_int_dtype=False,
+            sanitize_non_finite=True,
             ):
 
         if isinstance(fp_dtype, str):
@@ -78,6 +79,12 @@ class Cast(Transform):
         self.pos_dtype = pos_dtype
         self.rgb_to_float = rgb_to_float
         self.optimal_int_dtype = optimal_int_dtype
+        self.sanitize_non_finite = sanitize_non_finite
+
+    def _sanitize_tensor(self, x):
+        if isinstance(x, torch.Tensor) and x.is_floating_point():
+            return torch.nan_to_num(x, nan=0, posinf=0, neginf=0)
+        return x
         
     def _process(self, data):
         # Isolate the tensor casting function as a lambda function to be
@@ -94,6 +101,8 @@ class Cast(Transform):
             if k in ['rgb', 'mean_rgb']:
                 data[k] = to_float_rgb(data[k]).to(self.fp_dtype) \
                     if self.rgb_to_float else to_byte_rgb(data[k])
+                if self.sanitize_non_finite:
+                    data[k] = self._sanitize_tensor(data[k])
                 continue
 
             # Specific behavior for 'pos_offset', which is used for
@@ -108,6 +117,8 @@ class Cast(Transform):
                     data[k] = data[k].to(self.pos_dtype)
                 else:
                     data[k] = data[k].to(self.fp_dtype)
+                if self.sanitize_non_finite:
+                    data[k] = self._sanitize_tensor(data[k])
                 continue
 
             # Cast TensorHolderMixIn attributes such as Cluster,
@@ -123,6 +134,8 @@ class Cast(Transform):
             # cases for 'rgb' and TensorHolderMixIn attributes, we do
             # this instead
             data[k] = recursive_apply(data[k], cast)
+            if self.sanitize_non_finite:
+                data[k] = recursive_apply(data[k], self._sanitize_tensor)
 
         # Need to additionally process attributes allowing to maintain
         # the batching mechanism throughout serialization

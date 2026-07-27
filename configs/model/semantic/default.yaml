@@ -21,6 +21,11 @@ track_val_every_n_epoch: ${trainer.check_val_every_n_epoch} # trigger the tracki
 track_val_idx: null  # index of the validation batch to track. If -1, all the validation batches will be tracked, at every `track_val_every_n_epoch` epoch
 track_test_idx: null  # index of the test batch to track. If -1, all the test batches will be tracked
 
+# When enabled, validation/test writes per-scan Stage 2 semantic score CSVs
+# sorted from worst to best. These files drive active-learning selection.
+active_learning_export: False
+active_learning_export_dir: null
+
 optimizer:
   _target_: torch.optim.AdamW
   _partial_: True

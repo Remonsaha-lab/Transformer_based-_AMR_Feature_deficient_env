@@ -1,0 +1,2 @@
+rank_worst_first,scan_id,purity_miou,purity_oa,num_points,num_superpoints,epoch
+1,indoors/scene_00019/scan_00183/00019_00183_indoors_000_010,84.62211608886719,95.9837646484375,83157,7972,9

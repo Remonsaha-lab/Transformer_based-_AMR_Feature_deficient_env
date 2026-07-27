@@ -1,754 +1,517 @@
-<div align="center">
+# EZ-SP / Superpoint Transformer — DIODE Installation and Project Guide
 
-# Superpoint Transformer
+This guide documents the DIODE-only installation and execution workflow for
+this repository: prerequisites, environment setup, DIODE preparation, training,
+evaluation, visualization, active learning, outputs, and project architecture.
 
-[![python](https://img.shields.io/badge/-Python_3.8+-blue?logo=python&logoColor=white)](https://github.com/pre-commit/pre-commit)
-[![pytorch](https://img.shields.io/badge/PyTorch_2.2+-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/get-started/locally/)
-[![lightning](https://img.shields.io/badge/-Lightning_2.2+-792ee5?logo=pytorchlightning&logoColor=white)](https://pytorchlightning.ai/)
-[![hydra](https://img.shields.io/badge/Config-Hydra_1.3-89b8cd)](https://hydra.cc/)
-[![license](https://img.shields.io/badge/License-MIT-green.svg?labelColor=gray)](https://github.com/ashleve/lightning-hydra-template#license)
+The implementation contains three related systems:
 
-[//]: # ([![Paper]&#40;https://img.shields.io/badge/paper-arxiv.1001.2234-B31B1B.svg&#41;]&#40;https://www.nature.com/articles/nature14539&#41;)
-[//]: # ([![Conference]&#40;https://img.shields.io/badge/AnyConference-year-4b44ce.svg&#41;]&#40;https://papers.nips.cc/paper/2020&#41;)
+- **Superpoint Transformer (SPT)** for semantic segmentation.
+- **SuperCluster** for panoptic segmentation.
+- **EZ-SP (Easy Superpoints)**, which learns a GPU-friendly superpoint
+  partition and then performs semantic segmentation on that partition.
 
+Run the commands below from:
 
-Official implementation for
-<br>
-<br>
-[_Efficient 3D Semantic Segmentation with Superpoint Transformer_](https://arxiv.org/abs/2306.08045) (ICCV'23)
-<br>
-[![arXiv](https://img.shields.io/badge/arxiv-2306.08045-b31b1b.svg)](https://arxiv.org/abs/2306.08045)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8042712.svg)](https://doi.org/10.5281/zenodo.8042712)
-[![Project page](https://img.shields.io/badge/Project_page-8A2BE2)](https://drprojects.github.io/superpoint-transformer-site)
-[![Tutorial](https://img.shields.io/badge/Tutorial-FFC300)](https://www.youtube.com/watch?v=2qKhpQs9gJw)
-<br>
-<br>
-[_Scalable 3D Panoptic Segmentation As Superpoint Graph Clustering_](https://arxiv.org/abs/2401.06704) (3DV'24 Oral)
-<br>
-[![arXiv](https://img.shields.io/badge/arxiv-2401.06704-b31b1b.svg)](https://arxiv.org/abs/2401.06704)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10689037.svg)](https://doi.org/10.5281/zenodo.10689037)
-[![Project page](https://img.shields.io/badge/Project_page-8A2BE2)](https://drprojects.github.io/supercluster-site)
-<br>
-<br>
-[_EZ-SP: Fast and Lightweight Superpoint-Based 3D Segmentation_](https://arxiv.org/abs/2512.00385) (ICRA'26)
-<br>
-[![arXiv](https://img.shields.io/badge/arxiv-2512.00385-b31b1b.svg)](https://arxiv.org/abs/2512.00385)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18329602.svg)](https://doi.org/10.5281/zenodo.18329602)
-[![Project page](https://img.shields.io/badge/Project_page-8A2BE2)](https://louisgeist.github.io/ez-sp/)
-<br>
-<br>
-**If you ❤️ or simply use this project, don't forget to give the repository a ⭐,
-it means a lot to us !**
-<br>
-</div>
+```text
+/home/remon/EZ_SP_CFDVri/superpoint_transformer
+```
 
+Replace this path if the repository is located elsewhere.
 
-<br>
+## 1. Project workflow
 
-## 📌  Description
+The complete point-cloud workflow is:
 
-### Superpoint Transformer
+```text
+raw point cloud
+    → dataset reader and preprocessing
+    → point features, neighborhoods, graphs, and hierarchical superpoints
+    → SPT / SuperCluster model
+    → semantic or panoptic prediction
+    → metrics, checkpoints, logs, and visualizations
+```
 
-<p align="center">
-  <img width="80%" src="./media/teaser_spt.png">
-</p>
+SPT predicts semantic classes over a superpoint hierarchy. SuperCluster adds
+instance-level panoptic predictions by clustering a superpoint graph during
+inference. EZ-SP uses two training stages: a point CNN learns embeddings and a
+GPU graph partitioner builds superpoints; a second model then performs semantic
+segmentation using those learned partitions.
 
-**Superpoint Transformer (SPT)** is a superpoint-based transformer 🤖 architecture that efficiently ⚡ 
-performs **semantic segmentation** on large-scale 3D scenes. This method includes a 
-fast algorithm that partitions 🧩 point clouds into a hierarchical superpoint 
-structure, as well as a self-attention mechanism to exploit the relationships 
-between superpoints at multiple scales. 
+## 2. Requirements
 
-<div align="center">
+The upstream project was tested on Linux, approximately 64 GB RAM, and NVIDIA
+GPUs such as GTX 1080 Ti 11 GB, V100 32 GB, and A40 48 GB. A CUDA GPU is
+strongly recommended.
 
-|                                                                                   ✨ SPT in numbers ✨                                                                                      |
-|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|
-|                                                                          📊 **S3DIS 6-Fold** (76.0 mIoU)                                                                          |
-|                                                                         📊 **KITTI-360 Val** (63.5 mIoU)                                                                          |
-|                                                                           📊 **DALES** (79.6 mIoU)                                                                           | 
-|      🦋 **212k parameters** ([PointNeXt](https://github.com/guochengqian/PointNeXt) ÷ 200, [Stratified Transformer](https://github.com/dvlab-research/Stratified-Transformer) ÷ 40)       | 
-| ⚡ S3DIS training in **3h on 1 GPU** ([PointNeXt](https://github.com/guochengqian/PointNeXt) ÷ 7, [Stratified Transformer](https://github.com/dvlab-research/Stratified-Transformer) ÷ 70) | 
-|                                                  ⚡ **Preprocessing x7 faster than [SPG](https://github.com/loicland/superpoint_graph)**                                                   |
+Required tools:
 
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/efficient-3d-semantic-segmentation-with-1/3d-semantic-segmentation-on-s3dis)](https://paperswithcode.com/sota/3d-semantic-segmentation-on-s3dis?p=efficient-3d-semantic-segmentation-with-1)
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/efficient-3d-semantic-segmentation-with-1/3d-semantic-segmentation-on-dales)](https://paperswithcode.com/sota/3d-semantic-segmentation-on-dales?p=efficient-3d-semantic-segmentation-with-1)
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/efficient-3d-semantic-segmentation-with-1/semantic-segmentation-on-s3dis)](https://paperswithcode.com/sota/semantic-segmentation-on-s3dis?p=efficient-3d-semantic-segmentation-with-1)
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/efficient-3d-semantic-segmentation-with-1/3d-semantic-segmentation-on-kitti-360)](https://paperswithcode.com/sota/3d-semantic-segmentation-on-kitti-360?p=efficient-3d-semantic-segmentation-with-1)
-</div>
+- Linux, preferably Ubuntu 20.04 or newer
+- NVIDIA driver compatible with CUDA 11.8 or 12.1
+- CUDA toolkit 11.8 or 12.1, including `nvcc`
+- Conda/Miniconda
+- Git, GCC, and G++
 
-### SuperCluster
+Verify the machine:
 
-<p align="center">
-  <img width="80%" src="./media/teaser_supercluster.png">
-</p>
-
-**SuperCluster** is a superpoint-based architecture for **panoptic segmentation** of (very) large 3D scenes 🐘 based on SPT. 
-We formulate the panoptic segmentation task as a **scalable superpoint graph clustering** task. 
-To this end, our model is trained to predict the input parameters of a graph optimization problem whose solution is a panoptic segmentation 💡.
-This formulation allows supervising our model with per-node and per-edge objectives only, circumventing the need for computing an actual panoptic segmentation and associated matching issues at train time.
-At inference time, our fast parallelized algorithm solves the small graph optimization problem, yielding object instances 👥.
-Due to its lightweight backbone and scalable formulation, SuperCluster can process scenes of unprecedented scale at once, on a single GPU 🚀, with fewer than 1M parameters 🦋.
-
-<div align="center">
-
-|                               ✨ SuperCluster in numbers ✨                                |
-|:----------------------------------------------------------------------------------------:|
-|                        📊 **S3DIS 6-Fold** (55.9 PQ)                                     |
-|                              📊 **S3DIS Area 5** (50.1 PQ)                               |
-|                               📊 **ScanNet Val** (58.7 PQ)                               |
-|                              📊 **KITTI-360 Val** (48.3 PQ)                              |
-|                                  📊 **DALES** (61.2 PQ)                                  |
-| 🦋 **212k parameters** ([PointGroup](https://github.com/dvlab-research/PointGroup) ÷ 37) |
-|                           ⚡ S3DIS training in **4h on 1 GPU**                            | 
-|              ⚡ **7.8km²** tile of **18M** points in **10.1s** on **1 GPU**               |
-
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/scalable-3d-panoptic-segmentation-with/panoptic-segmentation-on-s3dis)](https://paperswithcode.com/sota/panoptic-segmentation-on-s3dis?p=scalable-3d-panoptic-segmentation-with)
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/scalable-3d-panoptic-segmentation-with/panoptic-segmentation-on-s3dis-area5)](https://paperswithcode.com/sota/panoptic-segmentation-on-s3dis-area5?p=scalable-3d-panoptic-segmentation-with)
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/scalable-3d-panoptic-segmentation-with/panoptic-segmentation-on-scannetv2)](https://paperswithcode.com/sota/panoptic-segmentation-on-scannetv2?p=scalable-3d-panoptic-segmentation-with)
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/scalable-3d-panoptic-segmentation-with/panoptic-segmentation-on-kitti-360)](https://paperswithcode.com/sota/panoptic-segmentation-on-kitti-360?p=scalable-3d-panoptic-segmentation-with)
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/scalable-3d-panoptic-segmentation-with/panoptic-segmentation-on-dales)](https://paperswithcode.com/sota/panoptic-segmentation-on-dales?p=scalable-3d-panoptic-segmentation-with)
-
-</div>
-
-### EZ-SP (Easy Superpoints)
-
-<p align="center">
-  <img width="100%" src="./media/teaser_ezsp.png">
-</p>
-
-**EZ-SP** brings two main improvements over SPT:
-- Much faster preprocessing and inference
-- Easier and learnable parametrization of the partition
-
-EZ-SP replaces the costly, CPU-based, cut-pursuit partitioning step of SPT 
-with a **fast and learnable GPU-based partitioning**. 
-First, we train a small convolutional backbone to embed each point of the input 
-scene into a low-dimensional space, where adjacent points from different 
-semantic classes are pushed apart. Next, our new 
-[GPU-accelerated graph clustering algorithm](https://github.com/drprojects/torch-graph-components) 
-groups neighboring points with similar embeddings, while encouraging simple 
-cluster contours, thus produces semantically homogeneous superpoints. These 
-superpoints can then be used in the SPT semantic segmentation framework.
-
-<div align="center">
-
-|                                         ✨ EZ-SP in numbers ✨                                         |
-|:----------------------------------------------------------------------------------------------------:|
-|                                   📊 **S3DIS 6-Fold** (76.1 mIoU)                                    |
-|                                   📊 **S3DIS Area 5** (69.6 mIoU)                                    |
-|                                   📊 **KITTI-360 Val** (62.0 mIoU)                                   |
-|                              📊 **DALES** (79.4 mIoU)                                                |
-|                                        🦋 **392k parameters**                                        |
-| ⚡️ **72×** faster than [PTv3](https://arxiv.org/abs/2312.10035) for end-to-end semantic segmentation |
-|                   ⚡️ **5.3x** faster than SPT for end-to-end semantic segmentation                   |
-
-</div>
-
-> **Note**: If you mostly care for the fast graph connected components and 
-> partitioning algorithms introduced in the 
-> [EZ-SP paper](https://arxiv.org/abs/2512.00385), 
-> please see our
-> [torch-graph-components](https://github.com/drprojects/torch-graph-components)
-> library.
-
-## 📰  Updates
-- **31.01.2026** Our paper [_**EZ-SP: Fast and Lightweight Superpoint-Based 3D Segmentation**_](https://arxiv.org/abs/2512.00385) was accepted at **[ICRA'26](https://2026.ieee-icra.org/)** 🥳
-- **22.01.2026** Release the graph connected components and graph
-partitioning algorithms introduced in EZ-SP as a standalone library: 
-[torch-graph-components](https://github.com/drprojects/torch-graph-components). 
-We hope this will facilitate the application of these core building blocks to 
-other graph-based projects. 
-- **27.11.2025** Major code release for our **learnable, GPU-accelerated 
-partition**, implementing 
-[_**EZ-SP: Fast and Lightweight Superpoint-Based 3D Segmentation**_](https://arxiv.org/abs/2512.00385).
-This new version introduces some changes to the codebase which are 
-**non-backward compatible**.
-We strived to document the breaking changes and provide **instructions and
-scripts** to help users of previous versions move to the new codebase.
-Please refer to the [**CHANGELOG**](CHANGELOG.md) for more details❗
-- **27.06.2024** Released our Superpoint Transformer 🧑‍🏫 tutorial 
-[slides](media/superpoint_transformer_tutorial.pdf), 
-[notebook](notebooks/superpoint_transformer_tutorial.ipynb), and [video](https://www.youtube.com/watch?v=2qKhpQs9gJw). 
-Check these out if you are getting started with the project ! 
-- **21.06.2024** [Damien](https://github.com/drprojects) will be giving a 
-**🧑‍🏫 tutorial on Superpoint Transformer on 📅 27.06.2024 at 1pm CEST**. 
-Make sure to come if you want to gain some hands-on experience with the project !
-**[Registration here](https://www.linkedin.com/events/superpointtransformersfor3dpoin7209130538110963712)**. 
-- **28.02.2024** Major code release for **panoptic segmentation**, implementing 
-**[_Scalable 3D Panoptic Segmentation As Superpoint Graph Clustering_](https://arxiv.org/abs/2401.06704)**.
-This new version also implements long-awaited features such as lightning's
-`predict()` behavior, **voxel-resolution and full-resolution prediction**.
-Some changes in the dependencies and repository structure are **not 
-backward-compatible**. If you were already using anterior code versions, this
-means we recommend re-installing your conda environment and re-running the 
-preprocessing or your datasets❗
-- **15.10.2023** Our paper **[_Scalable 3D Panoptic Segmentation As Superpoint Graph Clustering_](https://arxiv.org/abs/2401.06704)** was accepted for an **oral** presentation at **[3DV'24](https://3dvconf.github.io/2024/)** 🥳
-- **06.10.2023** Come see our poster for **[_Efficient 3D Semantic Segmentation with Superpoint Transformer_](https://arxiv.org/abs/2306.08045)** at **[ICCV'23](https://iccv2023.thecvf.com/)**
-- **14.07.2023** Our paper **[_Efficient 3D Semantic Segmentation with Superpoint Transformer_](https://arxiv.org/abs/2306.08045)** was accepted at **[ICCV'23](https://iccv2023.thecvf.com/)** 🥳
-- **15.06.2023** Official release 🌱
-
-<br>
-
-## 💻  Environment requirements
-This project was tested with:
-- Linux OS
-- **64G** RAM
-- NVIDIA GTX 1080 Ti **11G**, NVIDIA V100 **32G**, NVIDIA A40 **48G**
-- CUDA 11.8 and 12.1
-- conda 23.3.1
-
-<br>
-
-## 🏗  Installation
-Simply run [`install.sh`](install.sh) to install all dependencies in a new 
-conda environment named `spt`. 
 ```bash
-# Creates a conda env named 'spt' env and installs dependencies
+nvidia-smi
+nvcc --version
+git --version
+gcc --version
+g++ --version
+conda --version
+```
+
+For optional TorchSparse support on Ubuntu/Debian:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libsparsehash-dev
+```
+
+## 3. Get the code
+
+```bash
+git clone <repository-url> EZ_SP_CFDVri
+cd EZ_SP_CFDVri/superpoint_transformer
+```
+
+If the checkout already exists:
+
+```bash
+cd /home/remon/EZ_SP_CFDVri/superpoint_transformer
+```
+
+The main entry points are `src/train.py` and `src/eval.py`. They use
+`pyrootutils` to find the project root and add it to `PYTHONPATH`, so the
+project does not need to be installed as a Python package.
+
+## 4. Installation
+
+The canonical installer is `install.sh`. It creates a Conda environment named
+`spt`, detects CUDA with `nvcc`, installs PyTorch 2.2.0 and PyTorch Geometric,
+installs the packages in the project, and compiles FRNN. It supports CUDA
+11.8 and 12.1.
+
+### Standard environment
+
+```bash
+cd /home/remon/EZ_SP_CFDVri/superpoint_transformer
+chmod +x install.sh
 ./install.sh
+conda activate spt
 ```
 
-**Optional dependency**: [TorchSparse](https://github.com/mit-han-lab/torchsparse) 
-is an optional dependency that enables sparse 3D convolutions, used in the 
-EZ-SP models. To install an environment with this, use:
+### Environment with TorchSparse
+
+TorchSparse is used by the EZ-SP sparse CNN. Install it with:
+
 ```bash
-# Creates a conda env named 'spt' env and installs all dependencies + TorchSparse
+cd /home/remon/EZ_SP_CFDVri/superpoint_transformer
 ./install.sh with_torchsparse
+conda activate spt
 ```
 
+The optional path clones and compiles TorchSparse and installs sparsehash. Use
+it for EZ-SP experiments that require sparse 3D convolutions.
 
-> **Note**: See the [Datasets page](docs/datasets.md) for setting up your dataset
-> path and file structure.
+### Installed dependency groups
 
-<br>
+The installer covers PyTorch 2.2.0, PyTorch Geometric 2.3.0, Lightning,
+Hydra/OmegaConf, NumPy/SciPy/pandas/scikit-learn, h5py, Open3D, PLY and
+geometry packages, `pgeof`, `pycut-pursuit`, `pygrid-graph`, `torch-ransac3d`,
+`torch-graph-components`, visualization/logging tools, and the compiled FRNN
+extension. The maintained package list is also in
+[`requirements.txt`](superpoint_transformer/requirements.txt).
 
-### 🔩  Project structure
-```
-└── superpoint_transformer
-    │
-    ├── configs                   # Hydra configs
-    │   ├── callbacks                 # Callbacks configs
-    │   ├── data                      # Data configs
-    │   ├── debug                     # Debugging configs
-    │   ├── experiment                # Experiment configs
-    │   ├── extras                    # Extra utilities configs
-    │   ├── hparams_search            # Hyperparameter search configs
-    │   ├── hydra                     # Hydra configs
-    │   ├── local                     # Local configs
-    │   ├── logger                    # Logger configs
-    │   ├── model                     # Model configs
-    │   ├── paths                     # Project paths configs
-    │   ├── trainer                   # Trainer configs
-    │   │
-    │   ├── eval.yaml                 # Main config for evaluation
-    │   └── train.yaml                # Main config for training
-    │
-    ├── data                      # Project data (see docs/datasets.md)
-    │
-    ├── docs                      # Documentation
-    │
-    ├── logs                      # Logs generated by hydra and lightning loggers
-    │
-    ├── media                     # Media illustrating the project
-    │
-    ├── notebooks                 # Jupyter notebooks
-    │
-    ├── scripts                   # Shell scripts
-    │
-    ├── src                       # Source code
-    │   ├── data                      # Data structure for hierarchical partitions
-    │   ├── datamodules               # Lightning DataModules
-    │   ├── datasets                  # Datasets
-    │   ├── dependencies              # Compiled dependencies
-    │   ├── loader                    # DataLoader
-    │   ├── loss                      # Loss
-    │   ├── metrics                   # Metrics
-    │   ├── models                    # Model architecture
-    │   ├── nn                        # Model building blocks
-    │   ├── optim                     # Optimization 
-    │   ├── transforms                # Functions for transforms, pre-transforms, etc
-    │   ├── utils                     # Utilities
-    │   ├── visualization             # Interactive visualization tool
-    │   │
-    │   ├── eval.py                   # Run evaluation
-    │   └── train.py                  # Run training
-    │
-    ├── tests                     # Tests of any kind
-    │
-    ├── .env.example              # Example of file for storing private environment variables
-    ├── .gitignore                # List of files ignored by git
-    ├── .pre-commit-config.yaml   # Configuration of pre-commit hooks for code formatting
-    ├── install.sh                # Installation script
-    ├── LICENSE                   # Project license
-    └── README.md
+The previous installation note described a Python 3.10 virtual environment.
+That is not the repository’s canonical path: the checked-in `install.sh` uses
+Conda and Python 3.8. Follow `install.sh` unless you deliberately maintain a
+separate, compatible environment.
 
-```
-
-> **Note**: See the [Datasets page](docs/datasets.md) for further details on `data/`. 
-
-> **Note**: See the [Logs page](docs/logging.md) for further details on `logs/`. 
-
-<br>
-
-## 🚀  Usage
-### Datasets
-See the [Datasets page](docs/datasets.md) to set up your datasets. 
-
-### Evaluation
-Use the following command structure for evaluating our models from a checkpoint 
-file `checkpoint.ckpt`, where `<task>` should be `semantic` for using SPT and `panoptic` for using 
-SuperCluster:
+## 5. Verify the environment
 
 ```bash
-# Evaluate for <task> segmentation on <dataset>
-python src/eval.py experiment=<task>/<dataset> ckpt_path=/path/to/your/checkpoint.ckpt
+cd /home/remon/EZ_SP_CFDVri/superpoint_transformer
+conda activate spt
+
+python -c "import torch, torch_geometric, pgeof, frnn; print('PyTorch:', torch.__version__); print('CUDA:', torch.cuda.is_available()); print('PyG:', torch_geometric.__version__); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
 ```
 
-Some examples:
+If TorchSparse was installed:
 
 ```bash
-# Evaluate SPT on S3DIS Fold 5
-python src/eval.py experiment=semantic/s3dis datamodule.fold=5 ckpt_path=/path/to/your/checkpoint.ckpt
-
-# Evaluate SPT on KITTI-360 Val
-python src/eval.py experiment=semantic/kitti360  ckpt_path=/path/to/your/checkpoint.ckpt 
-
-# Evaluate SPT on DALES
-python src/eval.py experiment=semantic/dales ckpt_path=/path/to/your/checkpoint.ckpt
-
-# Evaluate SuperCluster on S3DIS Fold 5
-python src/eval.py experiment=panoptic/s3dis datamodule.fold=5 ckpt_path=/path/to/your/checkpoint.ckpt
-
-# Evaluate SuperCluster on S3DIS Fold 5 with {wall, floor, ceiling} as 'stuff'
-python src/eval.py experiment=panoptic/s3dis_with_stuff datamodule.fold=5 ckpt_path=/path/to/your/checkpoint.ckpt
-
-# Evaluate SuperCluster on ScanNet Val
-python src/eval.py experiment=panoptic/scannet ckpt_path=/path/to/your/checkpoint.ckpt
-
-# Evaluate SuperCluster on KITTI-360 Val
-python src/eval.py experiment=panoptic/kitti360  ckpt_path=/path/to/your/checkpoint.ckpt 
-
-# Evaluate SuperCluster on DALES
-python src/eval.py experiment=panoptic/dales ckpt_path=/path/to/your/checkpoint.ckpt
-
-# Evaluate EZ-SP on DALES
-python src/eval.py experiment=semantic/dales_ezsp ckpt_path=/path/to/your/checkpoint.ckpt datamodule.pretrained_cnn_ckpt_path=/path/to/your/partition_checkpoint.ckpt
+python -c "import torchsparse; print('TorchSparse import: OK')"
 ```
 
-> **Note**: 
-> 
-> The pretrained weights of the **SPT** and **SPT-nano** models for 
->**S3DIS 6-Fold**, **KITTI-360 Val**, and **DALES** are available at:
->
-> [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8042712.svg)](https://doi.org/10.5281/zenodo.8042712)
-> 
-> The pretrained weights of the **SuperCluster** models for 
->**S3DIS 6-Fold**, **S3DIS 6-Fold with stuff**, **ScanNet Val**, **KITTI-360 Val**, and **DALES** are available at:
->
-> [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10689037.svg)](https://doi.org/10.5281/zenodo.10689037)
->
-> The pretrained weights of the **EZ-SP** models for **S3DIS 6-Fold**, **KITTI-360 Val**, and **DALES** are available at:
->
-> [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18329602.svg)](https://doi.org/10.5281/zenodo.18329602)
-
-### Training
-#### SPT & SuperCluster
-Use the following command structure for **train our models on a 32G-GPU**, 
-where `<task>` should be `semantic` for using SPT and `panoptic` for using 
-SuperCluster:
+Run configuration tests before a long training job:
 
 ```bash
-# Train for <task> segmentation on <dataset>
-python src/train.py experiment=<task>/<dataset>
+pytest -q tests/test_configs.py
 ```
 
-Some examples:
+Run all tests when the required data and optional dependencies are available:
 
 ```bash
-# Train SPT on S3DIS Fold 5
-python src/train.py experiment=semantic/s3dis datamodule.fold=5
-
-# Train SPT on KITTI-360 Val
-python src/train.py experiment=semantic/kitti360 
-
-# Train SPT on DALES
-python src/train.py experiment=semantic/dales
-
-# Train SuperCluster on S3DIS Fold 5
-python src/train.py experiment=panoptic/s3dis datamodule.fold=5
-
-# Train SuperCluster on S3DIS Fold 5 with {wall, floor, ceiling} as 'stuff'
-python src/train.py experiment=panoptic/s3dis_with_stuff datamodule.fold=5
-
-# Train SuperCluster on ScanNet Val
-python src/train.py experiment=panoptic/scannet
-
-# Train SuperCluster on KITTI-360 Val
-python src/train.py experiment=panoptic/kitti360 
-
-# Train SuperCluster on DALES
-python src/train.py experiment=panoptic/dales
+pytest -q
 ```
 
-Use the following to **train on a 11G-GPU 💾** (training time and performance 
-may vary):
+## 6. DIODE dataset setup
+
+Download the DIODE dataset manually. The project does not automate downloads
+for licensing/compliance reasons. Keep the original DIODE RGB, depth, and mask
+files in the DIODE split directories, then convert them to point clouds with
+`scripts/load_diode.py`.
+
+Convert DIODE RGB-D frames to PLY point clouds:
 
 ```bash
-# Train SPT on S3DIS Fold 5
-python src/train.py experiment=semantic/s3dis_11g datamodule.fold=5
-
-# Train SPT on KITTI-360 Val
-python src/train.py experiment=semantic/kitti360_11g 
-
-# Train SPT on DALES
-python src/train.py experiment=semantic/dales_11g
-
-# Train SuperCluster on S3DIS Fold 5
-python src/train.py experiment=panoptic/s3dis_11g datamodule.fold=5
-
-# Train SuperCluster on S3DIS Fold 5 with {wall, floor, ceiling} as 'stuff'
-python src/train.py experiment=panoptic/s3dis_with_stuff_11g datamodule.fold=5
-
-# Train SuperCluster on ScanNet Val
-python src/train.py experiment=panoptic/scannet_11g
-
-# Train SuperCluster on KITTI-360 Val
-python src/train.py experiment=panoptic/kitti360_11g 
-
-# Train SuperCluster on DALES
-python src/train.py experiment=panoptic/dales_11g
+python scripts/load_diode.py \
+  --diode_root data/diode/val \
+  --out_dir data/diode/raw_ply/val
 ```
 
-> **Note**: Encountering CUDA Out-Of-Memory errors 💀💾 ? See our dedicated 
-> [troubleshooting section](#cuda-out-of-memory-errors).
+The DIODE data module preprocesses the point clouds into
+`data/diode/processed/` on first use. Processed data is grouped by a
+preprocessing hash, allowing multiple preprocessing variants to coexist.
+For quick experiments, the data module also supports the `mini` option.
 
-> **Note**: Other ready-to-use configs are provided in
->[`configs/experiment/`](configs/experiment). You can easily design your own 
->experiments by composing [configs](configs):
->```bash
-># Train Nano-3 for 50 epochs on DALES
->python src/train.py datamodule=dales model=nano-3 trainer.max_epochs=50
->```
->See 
->[Lightning-Hydra](https://github.com/ashleve/lightning-hydra-template) for more
->information on how the config system works and all the awesome perks of the 
-> Lightning+Hydra combo.
+Expected high-level layout:
 
-> **Note**: By default, your logs will automatically be uploaded to 
->[Weights and Biases](https://wandb.ai), from where you can track and compare 
->your experiments. Other loggers are available in 
->[`configs/logger/`](configs/logger). See 
->[Lightning-Hydra](https://github.com/ashleve/lightning-hydra-template) for more
->information on the logging options.
+```text
+superpoint_transformer/
+└── data/
+    └── diode/
+        ├── raw_ply_data/  # train/test PLY files
+        ├── raw_ply/       # validation PLY files
+        └── processed/
+```
 
-NB: Current EZ-SP implementation supports `<dataset>` among `s3dis`, 
-`kitti360` and `dales`.
+### External data and log directories
 
-#### EZ-SP
+To keep large files outside the repository, create
+`configs/local/default.yaml`:
 
-Our EZ-SP method involves a two-stage training. 
+```yaml
+# @package paths
+data_dir: /path/to/your/data/
+log_dir: /path/to/your/logs/
+```
 
-1.  We train a small model to learn pointwise features for the superpoint 
-**partition**, by solving a **contrastive task** at the semantic boundaries.
+Without this file, the defaults are `data/` and `logs/` inside the project.
 
-2. We train a Superpoint Transformer model which takes these point features 
-as input and reasons on the associated hierarchical partition, by solving a 
-**semantic classification** task. 
+## 7. Hydra configuration
 
-> **Note**: If you mostly care for the fast graph connected components and 
-> partitioning algorithms introduced in the 
-> [EZ-SP paper](https://arxiv.org/abs/2512.00385), 
-> please see our
-> [torch-graph-components](https://github.com/drprojects/torch-graph-components)
-> library.
+Hydra composes a main config, an experiment preset, and command-line
+overrides. The main files are:
 
-##### 1. Train the partition model
+- `configs/train.yaml` — training and optional post-training test evaluation.
+- `configs/eval.yaml` — evaluation of a required checkpoint.
+
+Important config groups:
+
+```text
+configs/
+├── datamodule/       dataset readers, preprocessing, and loaders
+├── model/            semantic, panoptic, and partition model definitions
+├── experiment/       ready-to-run dataset/model combinations
+├── trainer/          CPU, GPU, DDP, and memory-specific settings
+├── callbacks/        checkpointing and monitoring
+├── logger/           W&B, CSV, TensorBoard, MLflow, and other loggers
+├── paths/            data, log, output, and working-directory paths
+├── debug/            limit, overfit, and profiler settings
+└── hydra/            runtime output-directory settings
+```
+
+General command form:
 
 ```bash
-python src/train.py experiment=partition/<dataset>_ezsp
+python src/train.py experiment=<task>/diode_ezsp key=value
 ```
 
-The checkpoint should be logged in 
-`logs/train/runs/<run_dir>/checkpoints/last.ckpt` 
-(check your bash and wandb logs 😉).
-
-> **Note**: 
-> The experiments from `config/experiments/partition` train a small sparse CNN for
-> EZ-SP that embeds every point into a low-dimensional space where adjacent points 
-> from different semantic classes are pushed apart. 
-> This first training stage is controlled by the `model.training_partition_stage` 
-> parameter.
-
-##### 2. Train the semantic model
+Useful DIODE examples:
 
 ```bash
-python src/train.py experiment=semantic/<dataset>_ezsp datamodule.pretrained_cnn_ckpt_path=<partition_ckpt_path>
+python src/train.py experiment=semantic/diode_11g +datamodule.mini=True
+python src/train.py experiment=semantic/diode_11g trainer.max_epochs=50
+python src/train.py experiment=semantic/diode_11g logger=tensorboard
+python src/train.py experiment=semantic/diode_11g debug=limit
+python src/train.py experiment=semantic/diode_11g ckpt_path=/path/to/last.ckpt
 ```
 
-Make sure you set the partition model checkpoint `pretrained_cnn_ckpt_path`.
-For this, you can train your own partition model as explained in step 1., or
-you can use our [pretrained checkpoints](https://zenodo.org/records/18329602) 
-(named `ezsp_partition_<dataset>.ckpt`).
+## 8. Training
 
-> **Note**: 
-> The experiments from `config/experiments/semantic` that end with `_ezsp` train
-> the full EZ-SP model for semantic segmentation. Note that these configurations
-> require a checkpoint path to a partition model, specified via the 
-> `datamodule.pretrained_cnn_ckpt_path` parameter. The pretrained partition 
-> model is used to compute the hierarchical superpoint partition during 
-> preprocessing, on which the full model reasons during training.
-
-
-### PyTorch Lightning `predict()`
-Both SPT and SuperCluster inherit from `LightningModule` and implement `predict_step()`, which permits using 
-[PyTorch Lightning's `Trainer.predict()` mechanism](https://lightning.ai/docs/pytorch/stable/deploy/production_basic.html).
-
-```python
-from src.models.semantic import SemanticSegmentationModule
-from src.datamodules.s3dis import S3DISDataModule
-from pytorch_lightning import Trainer
-
-# Predict behavior for semantic segmentation from a torch DataLoader
-dataloader = DataLoader(...)
-model = SemanticSegmentationModule(...)
-trainer = Trainer(...)
-batch, output = trainer.predict(model=model, dataloaders=dataloader)
-```
-
-This, however, still requires you to instantiate a `Trainer`, a `DataLoader`, 
-and a model with relevant parameters.
-
-For a little more simplicity, all our datasets inherit from 
-`LightningDataModule` and implement `predict_dataloader()` by pointing to their 
-corresponding test set by default. This permits directly passing a datamodule to
-[PyTorch Lightning's `Trainer.predict()`](https://lightning.ai/docs/pytorch/stable/common/trainer.html#predict)
-without explicitly instantiating a `DataLoader`.
-
-```python
-from src.models.semantic import SemanticSegmentationModule
-from src.datamodules.s3dis import S3DISDataModule
-from pytorch_lightning import Trainer
-
-# Predict behavior for semantic segmentation on S3DIS
-datamodule = S3DISDataModule(...)
-model = SemanticSegmentationModule(...)
-trainer = Trainer(...)
-batch, output = trainer.predict(model=model, datamodule=datamodule)
-```
-
-For more details on how to instantiate these, as well as the output format
-of our model, we strongly encourage you to play with our 
-[demo notebook](notebooks/demo.ipynb) and have a look at the [`src/eval.py`](src/eval.py) script.
-
-### Full-resolution predictions
-By design, our models only need to produce predictions for the superpoints of 
-the $P_1$ partition level during training. 
-All our losses and metrics are formulated as superpoint-wise objectives. 
-This conveniently saves compute and memory at training and evaluation time.
-
-At inference time, however, we often need the **predictions on the voxels** of the
-$P_0$ partition level or on the **full-resolution input point cloud**.
-To this end, we provide helper functions to recover voxel-wise and full-resolution
-predictions.
-
-See our [demo notebook](notebooks/demo.ipynb) for more details on these.
-
-### Using a pretrained model on custom data
-For running a pretrained model on your own point cloud, please refer to our 
-tutorial [slides](media/superpoint_transformer_tutorial.pdf), 
-[notebook](notebooks/superpoint_transformer_tutorial.ipynb), 
-and [video](https://www.youtube.com/watch?v=2qKhpQs9gJw).
-
-### Parametrizing the superpoint partition on custom data
-Our hierarchical superpoint partition is computed at preprocessing time. Its
-construction involves several steps whose parametrization must be adapted to
-your specific dataset and task. Please refer to our 
-tutorial [slides](media/superpoint_transformer_tutorial.pdf), 
-[notebook](notebooks/superpoint_transformer_tutorial.ipynb), 
-and [video](https://www.youtube.com/watch?v=2qKhpQs9gJw) for better 
-understanding this process and tuning it to your needs.
-
-### Parameterizing SuperCluster graph clustering
-One specificity of SuperCluster is that the model is not trained to explicitly 
-do panoptic segmentation, but to predict the input parameters of a superpoint 
-graph clustering problem whose solution is a panoptic segmentation.
-
-For this reason, the hyperparameters for this graph optimization problem are 
-selected after training, with a grid search on the training or validation set.
-We find that fairly similar hyperparameters yield the best performance on all 
-our datasets (see our [paper](https://arxiv.org/abs/2401.06704)'s appendix). Yet, you may want to explore 
-these hyperparameters for your own dataset. To this end, see our 
-[demo notebook](notebooks/demo_panoptic_parametrization.ipynb) for 
-parameterizing the panoptic segmentation.
-
-### Notebooks & visualization
-We provide [notebooks](notebooks) to help you get started with manipulating our 
-core data structures, configs loading, dataset and model instantiation, 
-inference on each dataset, and visualization.
-
-In particular, we created an interactive visualization tool ✨ which can be used
-to produce shareable HTMLs. Demos of how to use this tool are provided in 
-the [notebooks](notebooks). Additionally, examples of such HTML files are 
-provided in [media/visualizations.7z](media/visualizations.7z)
-
-<br>
-
-## 📚  Documentation
-
-| Location                                          | Content                                                                                                                     |
-|:--------------------------------------------------|:----------------------------------------------------------------------------------------------------------------------------|
-| [README](README.md)                               | General introduction to the project                                                                                         |
-| [`docs/data_structures`](docs/data_structures.md) | Introduction to the core data structures of this project: `Data`, `NAG`, `Cluster`, and `InstanceData`                      |
-| [`docs/datasets`](docs/datasets.md)               | Introduction to our implemented datasets, to our `BaseDataset` class, and how to create your own dataset inheriting from it |
-| [`docs/logging`](docs/logging.md)                 | Introduction to logging and the project's `logs/` structure                                                                 |
-| [`docs/visualization`](docs/visualization.md)     | Introduction to our interactive 3D visualization tool                                                                       |
-
-> **Note**: We endeavoured to **comment our code** as much as possible to make 
-> this project usable. If you don't find the answer you are looking for in the 
-> `docs/`, make sure to **have a look at the source code and past issues**. 
-> Still, if you find some parts are unclear or some more documentation would be 
-> needed, feel free to let us know by creating an issue ! 
-
-<br>
-
-## 👩‍🔧  Troubleshooting
-Here are some common issues and tips for tackling them.
-
-### SPT or SuperCluster on an 11G-GPU 
-Our default configurations are designed for a 32G-GPU. Yet, SPT and SuperCluster can run 
-on an **11G-GPU 💾**, with minor time and performance variations.
-
-We provide configs in [`configs/experiment/semantic`](configs/experiment/semantic) for 
-training SPT on an **11G-GPU 💾**:
+### DIODE semantic segmentation
 
 ```bash
-# Train SPT on S3DIS Fold 5
-python src/train.py experiment=semantic/s3dis_11g datamodule.fold=5
-
-# Train SPT on KITTI-360 Val
-python src/train.py experiment=semantic/kitti360_11g 
-
-# Train SPT on DALES
-python src/train.py experiment=semantic/dales_11g
+# DIODE baseline, configured for an 11 GB GPU
+python src/train.py experiment=semantic/diode_11g
 ```
 
-Similarly, we provide configs in [`configs/experiment/panoptic`](configs/experiment/panoptic) for 
-training SuperCluster on an **11G-GPU 💾**:
+The DIODE baseline uses the SPT semantic model. Adjust `xy_tiling`, batch
+size, or `+datamodule.mini=True` for limited GPU memory.
+
+### DIODE EZ-SP two-stage training
+
+**Stage 1: train the partition model.** The point CNN learns an embedding and
+the GPU graph partitioner uses it to construct hierarchical superpoints:
 
 ```bash
-# Train SuperCluster on S3DIS Fold 5
-python src/train.py experiment=panoptic/s3dis_11g datamodule.fold=5
-
-# Train SuperCluster on S3DIS Fold 5 with {wall, floor, ceiling} as 'stuff'
-python src/train.py experiment=panoptic/s3dis_with_stuff_11g datamodule.fold=5
-
-# Train SuperCluster on ScanNet Val
-python src/train.py experiment=panoptic/scannet_11g
-
-# Train SuperCluster on KITTI-360 Val
-python src/train.py experiment=panoptic/kitti360_11g 
-
-# Train SuperCluster on DALES
-python src/train.py experiment=panoptic/dales_11g
+python src/train.py experiment=partition/diode_ezsp
 ```
 
+The checkpoint is usually under:
 
-### CUDA Out-Of-Memory Errors
-Having some CUDA OOM errors 💀💾 ? Here are some parameters you can play 
-with to mitigate GPU memory use, based on when the error occurs.
-
-<details>
-<summary><b>Parameters affecting CUDA memory.</b></summary>
-
-**Legend**: 🟡 Preprocessing | 🔴 Training | 🟣 Inference (including validation and testing during training)
-
-| Parameter                                   | Description                                                                                                                                                                                                                        |  When  |
-|:--------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:------:|
-| `datamodule.xy_tiling`                      | Splits dataset tiles into xy_tiling^2 smaller tiles, based on a regular XY grid. Ideal square-shaped tiles à la DALES. Note this will affect the number of training steps.                                                         |  🟡🟣  |
-| `datamodule.pc_tiling`                      | Splits dataset tiles into 2^pc_tiling smaller tiles, based on a their principal component. Ideal for varying tile shapes à la S3DIS and KITTI-360. Note this will affect the number of training steps.                             |  🟡🟣  |
-| `datamodule.max_num_nodes`                  | Limits the number of $P_1$ partition nodes/superpoints in the **training batches**.                                                                                                                                                |   🔴   |
-| `datamodule.max_num_edges`                  | Limits the number of $P_1$ partition edges in the **training batches**.                                                                                                                                                            |   🔴   |
-| `datamodule.voxel`                          | Increasing voxel size will reduce preprocessing, training and inference times but will reduce performance.                                                                                                                         | 🟡🔴🟣 |
-| `datamodule.pcp_regularization`             | Regularization for partition levels. The larger, the fewer the superpoints.                                                                                                                                                        | 🟡🔴🟣 |
-| `datamodule.pcp_spatial_weight`             | Importance of the 3D position in the partition. The smaller, the fewer the superpoints.                                                                                                                                            | 🟡🔴🟣 |
-| `datamodule.pcp_cutoff`                     | Minimum superpoint size. The larger, the fewer the superpoints.                                                                                                                                                                    | 🟡🔴🟣 |
-| `datamodule.graph_k_max`                    | Maximum number of adjacent nodes in the superpoint graphs. The smaller, the fewer the superedges.                                                                                                                                  | 🟡🔴🟣 |
-| `datamodule.graph_gap`                      | Maximum distance between adjacent superpoints int the superpoint graphs. The smaller, the fewer the superedges.                                                                                                                    | 🟡🔴🟣 |
-| `datamodule.graph_chunk`                    | Reduce to avoid OOM when `RadiusHorizontalGraph` preprocesses the superpoint graph.                                                                                                                                                |   🟡   |
-| `datamodule.dataloader.batch_size`          | Controls the number of loaded tiles. Each **train batch** is composed of `batch_size`*`datamodule.sample_graph_k` spherical samplings. Inference is performed on **entire validation and test tiles**, without spherical sampling. |  🔴🟣  |
-| `datamodule.sample_segment_ratio`           | Randomly drops a fraction of the superpoints at each partition level.                                                                                                                                                              |   🔴   |
-| `datamodule.sample_graph_k`                 | Controls the number of spherical samples in the **train batches**.                                                                                                                                                                 |   🔴   |
-| `datamodule.sample_graph_r`                 | Controls the radius of spherical samples in the **train batches**. Set to `sample_graph_r<=0` to use the entire tile without spherical sampling.                                                                                   |   🔴   |
-| `datamodule.sample_point_min`               | Controls the minimum number of $P_0$ points sampled per superpoint in the **train batches**.                                                                                                                                       |   🔴   |
-| `datamodule.sample_point_max`               | Controls the maximum number of $P_0$ points sampled per superpoint in the **train batches**.                                                                                                                                       |   🔴   |
-| `callbacks.gradient_accumulator.scheduling` | Gradient accumulation. Can be used to train with smaller batches, with more training steps.                                                                                                                                        |   🔴   |
-
-<br>
-</details>
-
-<br>
-
-## 💬 Citing our work
-If your work uses all or part of the present code, please include the following a citation:
-
-```
-@article{robert2023spt,
-  title={Efficient 3D Semantic Segmentation with Superpoint Transformer},
-  author={Robert, Damien and Raguet, Hugo and Landrieu, Loic},
-  journal={Proceedings of the IEEE/CVF International Conference on Computer Vision},
-  year={2023}
-}
-
-@article{robert2024scalable,
-  title={Scalable 3D Panoptic Segmentation as Superpoint Graph Clustering},
-  author={Robert, Damien and Raguet, Hugo and Landrieu, Loic},
-  journal={Proceedings of the IEEE International Conference on 3D Vision},
-  year={2024}
-}
-
-@article{geist2025ezsp,
-  title={EZ-SP: Fast and Lightweight Superpoint-Based 3D Segmentation},
-  author={Geist, Louis and Landrieu, Loic and Robert, Damien},
-  journal={ICRA},
-  year={2026},
-}
+```text
+logs/train/runs/<run_name>/checkpoints/last.ckpt
 ```
 
-📄 You can find our papers on arxiv:
-- [SPT](https://arxiv.org/abs/2306.08045)
-- [SuperCluster](https://arxiv.org/abs/2401.06704)
-- [EZ-SP](https://arxiv.org/abs/2512.00385)
+**Stage 2: train the semantic model** using the Stage 1 checkpoint:
 
-Also, **if you ❤️ or simply use this project, don't forget to give the 
-repository a ⭐, it means a lot to us !**
+```bash
+python src/train.py \
+  experiment=semantic/diode_ezsp \
+  datamodule.pretrained_cnn_ckpt_path=/absolute/path/to/partition/last.ckpt
+```
 
-<br>
+Stage 2 needs `pretrained_cnn_ckpt_path`; the semantic and partition models
+are separate checkpoints.
 
-## 💳  Credits
-- This project was built using [Lightning-Hydra template](https://github.com/ashleve/lightning-hydra-template).
-- The main data structures of this work rely on [PyTorch Geometric](https://github.com/pyg-team/pytorch_geometric)
-- Some point cloud operations were inspired from the 
-[Torch-Points3D framework](https://github.com/nicolas-chaulet/torch-points3d), although not merged with the official project
-at this point. 
-- For the KITTI-360 dataset, some code from the official [KITTI-360](https://github.com/autonomousvision/kitti360Scripts) was 
-used.
-- Some superpoint-graph-related operations were inspired from
-[Superpoint Graph](https://github.com/loicland/superpoint_graph).
-- [Parallel Cut-Pursuit](https://gitlab.com/1a7r0ch3/parallel-cut-pursuit) was used in SPT and SPC to compute the 
-hierarchical superpoint partition and graph clustering. Note that this step is 
-replaced by our GPU-based algorithm in EZ-SP.
+## 9. Evaluation
 
-This project has greatly benefited from the support of 
-[**Romain Janvier**](https://github.com/rjanvier). 
-This collaboration was made possible thanks to
-the [3DFin](https://github.com/3DFin) project. **3DFin** has been developed at the Centre of Wildfire
-Research of Swansea University (UK) in collaboration with the Research Institute
-of Biodiversity (CSIC, Spain) and the Department of Mining Exploitation of the 
-University of Oviedo (Spain). 
-Funding provided by the UK NERC project (NE/T001194/1):
-_Advancing 3D Fuel Mapping for Wildfire Behaviour and Risk Mitigation Modelling_
-and by the Spanish Knowledge Generation project (PID2021-126790NB-I00):
-_Advancing carbon emission estimations from wildfires applying artificial 
-intelligence to 3D terrestrial point clouds_.
+Evaluation requires a checkpoint and the matching experiment configuration:
 
-This project has also benefited from contributions by **[Louis Geist](https://louisgeist.github.io)**, 
-whose work was funded by the [PEPR IA SHARP](https://www.pepr-ia.fr/en/projet/sharp-english/).
+```bash
+# DIODE semantic SPT
+python src/eval.py experiment=semantic/diode_11g \
+  ckpt_path=/absolute/path/to/checkpoint.ckpt
+```
+
+DIODE EZ-SP evaluation also needs the Stage 1 checkpoint:
+
+```bash
+python src/eval.py experiment=semantic/diode_ezsp \
+  ckpt_path=/absolute/path/to/semantic_checkpoint.ckpt \
+  datamodule.pretrained_cnn_ckpt_path=/absolute/path/to/partition_checkpoint.ckpt
+```
+
+## 10. Visualization and utility scripts
+
+Inspect a script’s arguments first:
+
+```bash
+python scripts/visualize_stage1_outputs.py --help
+python scripts/visualize_specific_scene.py --help
+python scripts/check_validation_superpoints.py --help
+python scripts/visualize_downsampling.py --help
+```
+
+Stage 1 output visualization defaults to `outputs/stage1_vis`:
+
+```bash
+python scripts/visualize_stage1_outputs.py \
+  --file_path /path/to/processed_scene.h5 \
+  --out_dir outputs/stage1_vis
+```
+
+Other repository utilities include:
+
+```bash
+python scripts/load_diode.py --help
+python scripts/generate_mask2former_labels.py --help
+python scripts/check_validation_superpoints.py --help
+python scripts/visualize_specific_scene.py --help
+python scripts/visualize_downsampling.py --help
+python check_duplicates.py --help
+```
+
+Some utilities are dataset-specific and may require configuration in the
+source file rather than command-line arguments.
+
+## 11. Active learning
+
+`stage1_active_learning.py` selects scans using partition purity scores
+(`purity_miou`). `stage2_active_learning.py` selects scans using semantic
+scores (`semantic_miou`). Both support an initial random subset and a later
+score-based expansion.
+
+```bash
+python scripts/stage1_active_learning.py --help
+python scripts/stage2_active_learning.py --help
+```
+
+Example Stage 1 flow:
+
+```bash
+python scripts/stage1_active_learning.py init \
+  --all-ids /path/to/all_scan_ids.txt \
+  --fraction 0.10 --seed 0 \
+  --output active_learning/stage1_round_10.txt
+
+python scripts/stage1_active_learning.py next \
+  --current-ids active_learning/stage1_round_10.txt \
+  --scores active_learning/scores/stage1_val_purity_epoch_0049.csv \
+  --target-fraction 0.20 \
+  --output active_learning/stage1_round_20.txt \
+  --added-output active_learning/stage1_added_10_to_20.txt
+```
+
+Stage 2 uses the same pattern with `stage2_active_learning.py`; its default
+score column is `semantic_miou`.
+
+## 12. Project architecture
+
+```text
+superpoint_transformer/
+├── configs/                  Hydra configuration graph
+├── data/                     raw and generated dataset data
+├── docs/                     dataset, logging, visualization, and data docs
+├── scripts/                  preprocessing, diagnostics, visualization, AL
+├── src/
+│   ├── data/                 Data, NAG, CSR, cluster, and instance structures
+│   ├── datamodules/          PyTorch Lightning data modules
+│   ├── datasets/             DIODE reader and point-cloud dataset utilities
+│   ├── dependencies/         compiled FRNN and optional TorchSparse sources
+│   ├── loader/               data-loading helpers
+│   ├── loss/                 semantic, panoptic, partition, and weighted losses
+│   ├── metrics/              semantic, panoptic, mAP, and weighted metrics
+│   ├── models/               semantic and panoptic Lightning modules
+│   │   └── components/       SPT backbone and MLP components
+│   ├── nn/                   attention, pooling, sparse, transformer, fusion
+│   ├── optim/                optimizers and learning-rate schedulers
+│   ├── transforms/           preprocessing, graph, geometry, sampling, device
+│   ├── utils/                Hydra, logging, graph, checkpoint, output helpers
+│   ├── visualization/        point-cloud visualization functions
+│   ├── train.py              training entry point
+│   └── eval.py               evaluation entry point
+├── tests/                    configuration, train, eval, and sweep tests
+├── install.sh                Conda/CUDA installation script
+└── requirements.txt          dependency pins
+```
+
+### Runtime data flow
+
+1. A dataset class reads raw files and creates the project point-cloud data
+   representation.
+2. Pre-transforms compute neighborhoods, graph connectivity, features, and
+   partition hierarchy, then cache them in `processed/`.
+3. DataLoader transforms apply sampling and augmentation.
+4. On-device transforms prepare GPU tensors and run expensive GPU operations.
+5. The model consumes point/superpoint features and graph connectivity.
+6. Lightning computes losses and metrics, saves checkpoints, and supports
+   training, testing, and prediction.
+
+### Model components
+
+- `src/models/semantic.py` implements semantic segmentation.
+- `src/models/panoptic.py` implements SuperCluster panoptic segmentation.
+- `src/models/components/spt.py` contains the Superpoint Transformer backbone.
+- `src/nn/` contains attention, transformer, pooling/unpooling, sparse,
+  normalization, and fusion layers.
+- `src/loss/` and `src/metrics/` contain task-specific objectives and metrics.
+- EZ-SP partition models are configured under `configs/model/partition/` and
+  `configs/experiment/partition/`.
+
+### Configuration flow
+
+```text
+experiment preset
+    ↓ overrides
+datamodule + model + trainer + logger + callbacks + paths
+    ↓
+src/train.py or src/eval.py
+```
+
+This allows dataset, model, GPU, logger, debug, and checkpoint settings to be
+changed from the command line without editing Python code.
+
+## 13. Logs, checkpoints, and outputs
+
+Training creates Hydra run directories with the resolved configuration,
+metrics, and Lightning checkpoints. A typical checkpoint location is:
+
+```text
+logs/train/runs/<run_name>/checkpoints/
+├── last.ckpt
+└── <best-checkpoint>.ckpt
+```
+
+The exact location is printed by Hydra and depends on
+`configs/hydra/default.yaml` and any local path override. In general:
+
+- `data/diode/processed/` contains generated DIODE files.
+- `logs/` contains training logs and checkpoints.
+- `outputs/` contains generated visualizations and utility outputs.
+- W&B is enabled by many experiment presets; use `wandb login` when needed.
+
+To disable online logging for a run:
+
+```bash
+python src/train.py experiment=semantic/diode_11g logger=null
+```
+
+## 14. Troubleshooting
+
+### CUDA is unavailable
+
+```bash
+nvidia-smi
+nvcc --version
+python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+```
+
+Fix the driver/toolkit first if `nvidia-smi` or `nvcc` fails. If only PyTorch
+fails, verify that the activated environment contains the CUDA-compatible wheel
+selected by `install.sh`.
+
+### CUDA out-of-memory
+
+Use an `_11g` experiment, run with `+datamodule.mini=True`, reduce the batch
+size, or select a smaller model under `configs/model/`.
+
+### FRNN or TorchSparse compilation fails
+
+Verify `nvcc`, CUDA headers, GCC/G++, and (for TorchSparse) sparsehash. Inspect
+the first compiler error in the build output; the final pip error is often only
+a summary.
+
+### Dataset files are missing
+
+Check `data/diode/`, the selected experiment name, and
+`configs/local/default.yaml`. The configured `data_dir` must contain the
+DIODE folder.
+
+### EZ-SP cannot load its partition model
+
+Pass an existing absolute Stage 1 checkpoint:
+
+```bash
+datamodule.pretrained_cnn_ckpt_path=/absolute/path/to/partition.ckpt
+```
+
+The Stage 1 partition checkpoint and Stage 2 semantic checkpoint are different
+files.
+
+## 15. Quick-start checklist
+
+```bash
+cd /home/remon/EZ_SP_CFDVri/superpoint_transformer
+./install.sh
+conda activate spt
+
+python -c "import torch, torch_geometric, pgeof, frnn; print(torch.cuda.is_available())"
+
+# Place the prepared DIODE data under data/diode/
+python src/train.py experiment=semantic/diode_11g +datamodule.mini=True
+
+# Evaluate a completed run
+python src/eval.py experiment=semantic/diode_11g \
+  ckpt_path=/absolute/path/to/checkpoint.ckpt
+```
+
+For additional background and exact dataset/logging/visualization details,
+see [`README.md`](superpoint_transformer/README.md),
+[`docs/datasets.md`](superpoint_transformer/docs/datasets.md),
+[`docs/logging.md`](superpoint_transformer/docs/logging.md), and
+[`docs/visualization.md`](superpoint_transformer/docs/visualization.md).

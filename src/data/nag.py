@@ -366,7 +366,8 @@ class NAG(TensorHolderMixIn):
 
             # Directly update the 'super_index' using 'sub_super' from
             # the above level
-            data_list[i].super_index = sub_super
+            if sub_super is not None:
+                data_list[i].super_index = sub_super
 
         # Iteratively update higher hierarchy levels
         for i in range(i_level + 1, self.absolute_num_levels):
@@ -380,7 +381,8 @@ class NAG(TensorHolderMixIn):
 
             # Directly update the 'sub' using 'super_sub' from the above
             # level
-            data_list[i].sub = super_sub
+            if super_sub is not None:
+                data_list[i].sub = super_sub
 
         # The higher level InstanceData needs to be informed of the
         # select operation. Otherwise, instance labels of higher levels

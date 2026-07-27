@@ -335,6 +335,12 @@ class CSRData(TensorHolderMixIn):
         an index tensor to be used to update any values tensor
         associated with the input pointers.
         """
+        # Handle empty indices gracefully (e.g. from empty XY tiles)
+        if indices.numel() == 0:
+            return (
+                torch.zeros(1, dtype=pointers.dtype, device=pointers.device),
+                torch.zeros(0, dtype=torch.long, device=pointers.device))
+
         assert indices.max() <= pointers.shape[0] - 2
         device = pointers.device
 

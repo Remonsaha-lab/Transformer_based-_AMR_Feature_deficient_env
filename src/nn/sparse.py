@@ -226,7 +226,7 @@ class SparseCNN(nn.ModuleList):
             return activation
         elif isinstance(activation, spnn.LeakyReLU):
             return activation
-        elif isinstance(activation, spnn.SiLU):
+        elif hasattr(spnn, 'SiLU') and isinstance(activation, getattr(spnn, 'SiLU')):
             return activation
         
         elif isinstance(activation, nn.Module):
@@ -236,7 +236,10 @@ class SparseCNN(nn.ModuleList):
                 return spnn.LeakyReLU(negative_slope=activation.negative_slope,
                                       inplace=activation.inplace)
             elif isinstance(activation, nn.SiLU):
-                return spnn.SiLU(inplace=activation.inplace)
+                if hasattr(spnn, 'SiLU'):
+                    return getattr(spnn, 'SiLU')(inplace=activation.inplace)
+                else:
+                    raise ValueError("torchsparse.nn has no SiLU activation in this version.")
             else:
                 raise ValueError(f"Invalid activation function: {activation}")
         
@@ -246,7 +249,10 @@ class SparseCNN(nn.ModuleList):
             elif activation.lower() == 'leakyrelu':
                 return spnn.LeakyReLU()
             elif activation.lower() == 'silu':
-                return spnn.SiLU()
+                if hasattr(spnn, 'SiLU'):
+                    return getattr(spnn, 'SiLU')()
+                else:
+                    raise ValueError("torchsparse.nn has no SiLU activation in this version.")
             else:
                 raise ValueError(f"Invalid activation function: {activation}")
         elif activation is None:

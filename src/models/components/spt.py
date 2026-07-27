@@ -792,8 +792,9 @@ class SPT(nn.Module):
             if self.h_edge_mlps is not None:
                 norm_index = nag[1].norm_index(mode=self.norm_mode)
                 norm_index = norm_index[nag[1].edge_index[0]]
-                nag[1].edge_attr = self.h_edge_mlps[0](
-                    nag[1].edge_attr, batch=norm_index)
+                if nag[1].edge_attr is not None and nag[1].edge_attr.shape[0] > 0:
+                    nag[1].edge_attr = self.h_edge_mlps[0](
+                        nag[1].edge_attr, batch=norm_index)
 
         # Forward the first stage
         x, diameter = self._forward_first_stage(nag)
@@ -830,13 +831,13 @@ class SPT(nn.Module):
                     norm_index = nag[i_level].norm_index(mode=self.norm_mode)
                     norm_index = norm_index[nag[i_level].edge_index[0]]
                     edge_attr = getattr(nag[i_level], 'edge_attr', None)
-                    if edge_attr is not None:
+                    if edge_attr is not None and edge_attr.shape[0] > 0:
                         nag[i_level].edge_attr = h_edge_mlp(
                             edge_attr, batch=norm_index)
                 if v_edge_mlp is not None:
                     norm_index = nag[i_level - 1].norm_index(mode=self.norm_mode)
                     v_edge_attr = getattr(nag[i_level], 'v_edge_attr', None)
-                    if v_edge_attr is not None:
+                    if v_edge_attr is not None and v_edge_attr.shape[0] > 0:
                         nag[i_level - 1].v_edge_attr = v_edge_mlp(
                             v_edge_attr, batch=norm_index)
 
