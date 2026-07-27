@@ -1,4 +1,4 @@
-# EZ-SP / Superpoint Transformer — DIODE Installation and Project Guide
+# EZ-SP / Superpoint Transformer Model for ABR — DIODE Installation and Procedures
 
 This guide documents the DIODE-only installation and execution workflow for
 this repository: prerequisites, environment setup, DIODE preparation, training,
