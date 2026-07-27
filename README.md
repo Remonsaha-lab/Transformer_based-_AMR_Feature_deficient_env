@@ -536,3 +536,28 @@ see [`README.md`](superpoint_transformer/README.md),
 [`docs/datasets.md`](superpoint_transformer/docs/datasets.md),
 [`docs/logging.md`](superpoint_transformer/docs/logging.md), and
 [`docs/visualization.md`](superpoint_transformer/docs/visualization.md).
+
+## 16. Device and execution environment
+
+The experiments and repository tasks documented here are being performed on
+the following development machine:
+
+| Component | Specification |
+|---|---|
+| Operating system | Ubuntu 22.04-based Linux, x86_64 kernel 6.8.0-124-generic |
+| CPU | 13th Gen Intel Core i5-13420H; 8 physical cores and 12 logical CPUs |
+| System memory | 15 GiB RAM; no swap configured |
+| GPU hardware | NVIDIA GPU detected, along with integrated Intel graphics; the exact NVIDIA model and VRAM could not be queried because the NVIDIA driver was not communicating at the time of documentation |
+| CUDA toolkit | CUDA 12.1, `nvcc` 12.1.105 |
+| Storage | 484 GB filesystem, approximately 240 GB available when documented |
+
+Before running GPU training, verify that the NVIDIA driver is active:
+
+```bash
+nvidia-smi
+python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'No CUDA device available')"
+```
+
+The reported hardware and available disk space can change over time; rerun
+the commands above and the system checks in the Requirements section when the
+machine or driver configuration changes.
