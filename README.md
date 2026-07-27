@@ -298,6 +298,27 @@ python src/eval.py experiment=semantic/diode_ezsp \
 
 ## 10. Visualization and utility scripts
 
+The `scripts/` folder contains the following task-specific utilities:
+
+| Script | Purpose |
+|---|---|
+| `load_diode.py` | Converts DIODE RGB-D images, depth maps, and validity masks into voxel-downsampled colored PLY point clouds. |
+| `generate_mask2former_labels.py` | Runs Mask2Former on the custom RGB-D scenes and saves semantic labels plus color-preview images. |
+| `split_train_test.py` | Randomly moves 10% of training PLY files, and matching label files when available, into the test split. Review the paths in the script before running because it changes the dataset on disk. |
+| `check_validation_superpoints.py` | Visualizes RGB colors and level-1/level-2 superpoint partitions for preprocessed DIODE scenes. |
+| `visualize_stage1_outputs.py` | Visualizes EZ-SP Stage 1 features, superpoint partitions, centroids, and graph edges from PLY or H5 input. Produces interactive HTML and static PNG outputs. |
+| `visualize_specific_scene.py` | Creates a four-panel comparison of RGB, semantic labels, Stage 1 superpoints, and superpoint purity for one scene. |
+| `visualize_downsampling.py` | Compares a raw point cloud with its voxel-downsampled version. The input and output paths are configured in the script. |
+| `diagnose_kitti_on_diode.py` | Runs a semantic checkpoint on DIODE scenes for qualitative KITTI-to-DIODE transfer diagnostics and writes raw-index metrics. These metrics are not a valid benchmark without a class mapping. |
+| `stage1_active_learning.py` | Selects scans for EZ-SP Stage 1 using partition-purity scores; lower purity scans are selected first. |
+| `stage2_active_learning.py` | Selects scans for Stage 2 semantic training using semantic mIoU scores; lower-scoring scans are selected first. |
+
+Most scripts expose command-line options through `--help`. The active-learning
+scripts use `init` to create an initial random subset and `next` to expand it
+using evaluation scores. `visualize_downsampling.py` and some diagnostic
+scripts contain dataset/output paths in the source file, so update those paths
+when running them on a different checkout.
+
 Inspect a script’s arguments first:
 
 ```bash
