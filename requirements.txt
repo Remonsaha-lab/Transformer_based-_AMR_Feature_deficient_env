@@ -19,7 +19,7 @@ torch-spline-conv==1.2.2+pt22cu121
 
 # Training and scientific computing
 torchmetrics==0.11.4
-pytorch-lightning==2.2.0
+pytorch-lightning==2.6.5
 numpy==1.26.4
 scipy==1.15.3
 pandas==2.3.3
