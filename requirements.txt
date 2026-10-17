@@ -6,7 +6,7 @@
 --find-links https://data.pyg.org/whl/torch-2.2.0+cu121.html
 
 # PyTorch 2.2.0 + CUDA 12.1
-torch==2.2.0+cu121
+torch==2.13.0
 torchvision==0.17.0+cu121
 torchaudio==2.2.0+cu121
 
