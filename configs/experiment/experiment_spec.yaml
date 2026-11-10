@@ -1,0 +1,210 @@
+# Phase 0 research contract.
+# This file defines the protocol for comparable experiments. It does not
+# change the current dataset loader or model until the relevant phase begins.
+
+schema_version: 1
+spec_status: frozen_for_phase_0
+
+dataset:
+  name: DIODE
+  source_label_count_current: 20
+  target_label_count: 10
+  ignore_label: 255
+  voxel_size_m: 0.05
+
+  taxonomy:
+    - id: 0
+      name: ground
+      description: Traversable indoor floors and open terrain.
+    - id: 1
+      name: road_path
+      description: Roads, sidewalks, and paved paths.
+    - id: 2
+      name: building_wall
+      description: Walls, facades, ceilings, doors, and fixed architectural structure.
+    - id: 3
+      name: vegetation
+      description: Bushes, foliage, grass, and low plants.
+    - id: 4
+      name: tree
+      description: Tree trunks and tree structure.
+    - id: 5
+      name: sky
+      description: Sky and distant open horizon.
+    - id: 6
+      name: vehicle
+      description: Cars, trucks, vans, and other vehicles.
+    - id: 7
+      name: person
+      description: Pedestrians and people.
+    - id: 8
+      name: furniture_obstacle
+      description: Furniture, movable objects, barriers, and clutter.
+    - id: 9
+      name: other
+      description: Valid residual objects that do not fit another class.
+    - id: 255
+      name: ignore
+      description: Void, invalid depth, ambiguous boundary, or unmappable label.
+
+  # This mapping is the Phase 0 research definition. It must be audited
+  # against manually reviewed scenes before becoming training code.
+  source_label_mapping:
+    0: building_wall       # wall
+    1: ground               # floor
+    2: building_wall       # ceiling
+    3: ground               # ground
+    4: road_path            # road
+    5: sky                 # sky
+    6: building_wall       # building
+    7: tree                # tree
+    8: vegetation           # vegetation
+    9: other                # water
+    10: other               # mountain
+    11: vehicle             # vehicle
+    12: person              # person
+    13: furniture_obstacle  # chair
+    14: furniture_obstacle  # table
+    15: furniture_obstacle  # sofa
+    16: furniture_obstacle  # cabinet
+    17: building_wall       # window
+    18: building_wall       # door
+    19: other                # other
+    20: ignore              # current repository void label
+
+  mapping_status: provisional_pending_phase_2_manual_audit
+
+splits:
+  unit: scene
+  manifest_dir: active_learning/splits
+  train: train_scenes.txt
+  validation: val_scenes.txt
+  test: test_scenes.txt
+  proportions:
+    train: 0.70
+    validation: 0.15
+    test: 0.15
+  leakage_policy: scene_ids_must_be_pairwise_disjoint
+  test_policy: held_out_until_final_evaluation
+
+metrics:
+  primary: macro_miou
+  primary_definition: mean_iou_over_classes_with_ground_truth_support
+  secondary:
+    - frequency_weighted_iou
+    - overall_accuracy
+    - mean_class_accuracy
+    - per_class_iou
+    - parameter_count
+    - peak_vram_mb
+    - end_to_end_latency_ms
+  fixed_closed_set_reporting:
+    enabled: true
+    absent_class_policy: report_zero_with_support_flag
+    note: Do not use fixed closed-set mIoU as the only headline metric.
+  statistical_unit: scene
+  bootstrap:
+    enabled: true
+    resampling_unit: scene
+    samples: 1000
+    confidence_level: 0.95
+  wilcoxon:
+    enabled: true
+    minimum_paired_runs_for_confirmatory_claim: 5
+    three_seed_policy: exploratory_only
+
+reproducibility:
+  development_seeds: [42, 43, 44]
+  final_seeds: [42, 43, 44, 45, 46]
+  deterministic_evaluation: true
+  record:
+    - git_revision
+    - python_version
+    - pytorch_version
+    - cuda_version
+    - dependency_lockfile
+    - hostname
+    - gpu_name
+    - peak_vram_mb
+    - wall_clock_time
+
+pseudo_labels:
+  initial_confidence_threshold: 0.7
+  initial_consensus_threshold: 0.6
+  ambiguous_boundary_policy: ignore
+  teacher_calibration:
+    enabled_before_threshold_fitting: true
+    calibration_split_must_be_disjoint_from_validation_and_test: true
+    report:
+      - overall_ece
+      - per_class_ece
+      - reliability_diagram
+      - temperature
+
+active_learning:
+  initial_seed_pool_fraction: 0.10
+  budgets: [0.10, 0.20, 0.30, 0.40, 0.50, 1.00]
+  strategies:
+    - random
+    - stage1_purity
+    - prediction_entropy
+    - class_diversity
+    - hybrid_uncertainty_diversity
+  identical_initial_seed_pool: true
+  candidate_pool_is_test_free: true
+  oracle_ground_truth_acquisition:
+    enabled: false
+    interpretation: ground_truth_informed_reference_not_a_theoretical_upper_bound
+
+robustness:
+  corruption_seeds: [42, 43, 44]
+  geometry:
+    - random_point_dropout
+    - planar_region_dropout
+    - increased_voxel_size
+    - depth_sparsification
+    - depth_noise
+    - partial_occlusion
+    - range_truncation
+  rgb:
+    - grayscale
+    - brightness_reduction
+    - blur
+    - color_noise
+    - low_light
+  combined:
+    - sparse_geometry_low_quality_rgb
+    - repetitive_planar_walls
+    - distance_dependent_depth_noise
+
+hardware:
+  primary_gpu: RTX 3050
+  secondary_devices:
+    - Jetson-class-device-if-available
+    - CPU-fallback-if-relevant
+  measure_end_to_end_pipeline: true
+
+phase_gates:
+  evaluation:
+    - independent_metrics_from_saved_predictions
+    - correct_ignore_masking
+    - point_alignment_check
+    - deterministic_rerun
+  data:
+    - fixed_manifests
+    - pairwise_disjoint_scene_ids
+    - documented_taxonomy
+  pseudo_labels:
+    - projection_audit
+    - mapping_audit
+    - retention_report
+    - manual_quality_estimate
+  baselines:
+    - comparable_rgb_baseline
+    - comparable_geometry_baseline
+    - comparable_multimodal_baseline
+    - comparable_ezsp_baseline
+
+outputs:
+  spec_copy_per_run: results/<run_id>/experiment_spec.yaml
+  phase_0_report: results/phase_0/phase_0_report.md

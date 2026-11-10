@@ -1308,6 +1308,11 @@ class SemanticSegmentationModule(LightningModule):
         # Detach the batch object and move it to CPU before saving
         batch = batch.detach().cpu()
 
+        for level_idx in range(batch.num_levels):
+            cloud_id = getattr(batch[level_idx], 'cloud_id', None)
+            if isinstance(cloud_id, (list, tuple)):
+                delattr(batch[level_idx], 'cloud_id')
+
         # Prepare the folder
         try:
             if self.trainer is None:

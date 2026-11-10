@@ -1,0 +1,31 @@
+# @package _global_
+
+defaults:
+  - /model/semantic/spt-3.yaml
+  - /model/semantic/_point_cnn.yaml
+  - /experiment/semantic/default_ezsp.yaml
+  - override /datamodule: semantic/diode_ezsp.yaml
+  - override /trainer: gpu.yaml
+
+datamodule:
+  num_classes: 10
+  taxonomy_mode: amr10
+  split_manifest_dir: active_learning/splits
+  train_on_val: false
+
+trainer:
+  max_epochs: 1000
+
+model:
+  optimizer:
+    lr: 0.01
+    weight_decay: 1e-2
+
+logger:
+  wandb:
+    project: diode_amr10
+    name: semantic-amr10
+
+callbacks:
+  rich_progress_bar:
+    _target_: pytorch_lightning.callbacks.TQDMProgressBar

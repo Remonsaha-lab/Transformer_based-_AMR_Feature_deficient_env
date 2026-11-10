@@ -9,6 +9,8 @@ dataloader:
 
 # Metadata for DIODE
 num_classes: 20
+taxonomy_mode: source20
+split_manifest_dir: null
 stuff_classes: []
 fold: null
 trainval: False

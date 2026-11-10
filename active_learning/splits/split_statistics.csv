@@ -1,0 +1,7 @@
+scene_id,source_split,scan_count,label_file_count,label_point_count,unique_source_labels,assigned_split
+indoors/scene_00019,val,73,73,6837010,0;1;2;4;6;10;13;14;15;16;17;18;19,val
+indoors/scene_00020,val,137,137,1551258,0;1;2;3;4;6;7;8;12;13;14;15;16;17;18;19,train
+indoors/scene_00021,val,115,115,1607070,0;1;2;4;5;6;8;12;13;14;16;17;18;19,test
+outdoor/scene_00022,val,261,261,66582170,0;1;3;4;5;6;7;8;9;10;11;12;13;14;18;19,test
+outdoor/scene_00023,val,105,105,16604729,0;1;2;3;4;5;6;7;8;11;12;14;16;18;19,val
+outdoor/scene_00024,val,80,80,22869397,0;1;3;4;5;6;7;8;9;10;11;12;13;14;17;19,train

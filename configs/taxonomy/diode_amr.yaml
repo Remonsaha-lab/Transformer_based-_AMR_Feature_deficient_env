@@ -1,0 +1,53 @@
+# Phase 1 taxonomy contract. The mapping is audited before it is activated.
+
+name: diode_amr_operational
+status: provisional_pending_manual_audit
+source_num_classes: 20
+source_ignore_label: 20
+target_num_classes: 10
+target_ignore_label: 255
+
+classes:
+  - id: 0
+    name: ground
+  - id: 1
+    name: road_path
+  - id: 2
+    name: building_wall
+  - id: 3
+    name: vegetation
+  - id: 4
+    name: tree
+  - id: 5
+    name: sky
+  - id: 6
+    name: vehicle
+  - id: 7
+    name: person
+  - id: 8
+    name: furniture_obstacle
+  - id: 9
+    name: other
+
+source_to_target:
+  0: 2
+  1: 0
+  2: 2
+  3: 0
+  4: 1
+  5: 5
+  6: 2
+  7: 4
+  8: 3
+  9: 9
+  10: 9
+  11: 6
+  12: 7
+  13: 8
+  14: 8
+  15: 8
+  16: 8
+  17: 2
+  18: 2
+  19: 9
+  20: 255

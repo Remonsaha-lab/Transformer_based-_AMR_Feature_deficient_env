@@ -226,21 +226,19 @@ def colorize_panoptic_segments(segment_ids: np.ndarray) -> np.ndarray:
 
 
 def semantic_confidence_map(outputs, target_size: tuple[int, int]) -> np.ndarray:
-    """Return confidence of the winning ADE20K class at each output pixel.
+    """Return confidence of the winning ADE20K class at each output pixel in [0, 1].
 
-    Mask2Former predicts query class probabilities and query masks.  Combining
-    them gives per-class semantic logits; softmax over classes yields a useful
-    normalized per-pixel confidence in the range [0, 1].
+    Mask2Former predicts query class probabilities and query masks. Combining
+    them gives per-class semantic scores; normalizing by total pixel query score
+    yields a calibrated per-pixel confidence in the range [0, 1].
     """
     class_probabilities = outputs.class_queries_logits.softmax(dim=-1)[..., :-1]
     mask_probabilities = outputs.masks_queries_logits.sigmoid()
-    class_logits = torch.einsum("bqc,bqhw->bchw", class_probabilities, mask_probabilities)
-    class_logits = F.interpolate(class_logits, size=target_size, mode="bilinear", align_corners=False)
-    # Avoid materialising a second full (classes x height x width) softmax
-    # tensor: full-resolution RGB-D images can be large.
-    winning_logit = class_logits.amax(dim=1)
-    log_normalizer = torch.logsumexp(class_logits, dim=1)
-    confidence = (winning_logit - log_normalizer).exp()[0]
+    class_scores = torch.einsum("bqc,bqhw->bchw", class_probabilities, mask_probabilities)
+    class_scores = F.interpolate(class_scores, size=target_size, mode="bilinear", align_corners=False)
+    winning_score = class_scores.amax(dim=1)
+    total_score = class_scores.sum(dim=1).clamp(min=1e-6)
+    confidence = (winning_score / total_score)[0]
     return confidence.float().cpu().numpy()
 
 

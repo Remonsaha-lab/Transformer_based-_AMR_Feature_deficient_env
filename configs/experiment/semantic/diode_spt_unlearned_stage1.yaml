@@ -1,0 +1,29 @@
+# @package _global_
+# Phase 3 Baseline 5: Stage 2 without learned Stage 1 partitioning
+
+defaults:
+  - override /datamodule: semantic/diode.yaml
+  - override /model: semantic/spt-2.yaml
+  - override /trainer: gpu.yaml
+
+datamodule:
+  num_classes: 10
+  taxonomy_mode: amr10
+  split_manifest_dir: active_learning/splits
+  train_on_val: false
+  xy_tiling: 3
+
+trainer:
+  max_epochs: 100
+  check_val_every_n_epoch: 5
+
+model:
+  optimizer:
+    lr: 0.1
+    weight_decay: 1e-2
+
+logger:
+  wandb:
+    project: diode_baselines
+    name: spt-unlearned-stage1
+

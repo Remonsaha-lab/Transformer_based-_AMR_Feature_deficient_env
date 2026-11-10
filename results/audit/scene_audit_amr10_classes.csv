@@ -1,0 +1,11 @@
+amr10_class_id,class_name,point_count,percentage_valid_support
+0,ground,10510623,8.9
+1,road_path,8985836,7.61
+2,building_wall,76429243,64.74
+3,vegetation,4918601,4.17
+4,tree,10591243,8.97
+5,sky,2554447,2.16
+6,vehicle,1349853,1.14
+7,person,12249,0.01
+8,furniture_obstacle,1696213,1.44
+9,other,1007809,0.85

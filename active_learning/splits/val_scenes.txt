@@ -1,0 +1,2 @@
+val/indoors/scene_00019
+val/outdoor/scene_00023

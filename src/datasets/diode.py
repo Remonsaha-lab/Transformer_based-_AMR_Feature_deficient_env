@@ -3,10 +3,18 @@ import glob
 import torch
 import numpy as np
 import os.path as osp
+from pathlib import Path
 from typing import List
 
 from src.datasets.base import BaseDataset
 from src.data import Data, InstanceData
+
+
+SOURCE_TO_AMR10 = {
+    0: 2, 1: 0, 2: 2, 3: 0, 4: 1, 5: 5, 6: 2, 7: 4, 8: 3,
+    9: 9, 10: 9, 11: 6, 12: 7, 13: 8, 14: 8, 15: 8, 16: 8,
+    17: 2, 18: 2, 19: 9,
+}
 
 
 class DIODEDataset(BaseDataset):
@@ -28,6 +36,10 @@ class DIODEDataset(BaseDataset):
 
         # Store the original root before BaseDataset modifies it
         self.dataset_root = os.path.abspath(root)
+        if os.path.basename(os.path.normpath(self.dataset_root)) != "diode":
+            self.dataset_root = osp.join(self.dataset_root, "diode")
+        self.split_manifest_dir = kwargs.pop("split_manifest_dir", None)
+        self.taxonomy_mode = kwargs.pop("taxonomy_mode", "source20")
         super().__init__(root, *args, **kwargs)
 
 
@@ -38,6 +50,12 @@ class DIODEDataset(BaseDataset):
 
     @property
     def class_names(self) -> List[str]:
+        if self.taxonomy_mode == "amr10":
+            return [
+                "ground", "road_path", "building_wall", "vegetation", "tree",
+                "sky", "vehicle", "person", "furniture_obstacle", "other",
+                "ignored",
+            ]
         return [
             "wall", "floor", "ceiling", "ground", "road",
             "sky", "building", "tree", "vegetation", "water",
@@ -49,7 +67,7 @@ class DIODEDataset(BaseDataset):
 
     @property
     def num_classes(self) -> int:
-        return 20
+        return 10 if self.taxonomy_mode == "amr10" else 20
 
     @property
     def stuff_classes(self) -> List[int]:
@@ -85,13 +103,41 @@ class DIODEDataset(BaseDataset):
     def raw_dir(self) -> str:
         # Return the folder containing the raw_ply directory
         # Use raw_ply_data for train/test splits if it exists, and raw_ply for val split
+        if self.split_manifest_dir is not None:
+            return osp.join(self.dataset_root, "raw_ply")
         if self.stage in ["train", "test"] and osp.exists(osp.join(self.dataset_root, "raw_ply_data")):
             return osp.join(self.dataset_root, "raw_ply_data")
         return osp.join(self.dataset_root, "raw_ply")
 
     @property
+    def manifest_root(self) -> Path:
+        if self.split_manifest_dir is None:
+            return Path("")
+        path = Path(self.split_manifest_dir)
+        return path if path.is_absolute() else Path.cwd() / path
+
+    def _manifest_scene_ids(self, stage: str) -> list[str]:
+        if self.split_manifest_dir is None:
+            return []
+        path = self.manifest_root / f"{stage}_scenes.txt"
+        if not path.is_file():
+            return []
+        return [
+            line.strip() for line in path.read_text().splitlines()
+            if line.strip() and not line.startswith("#")]
+
+    @property
     def all_base_cloud_ids(self) -> dict:
         res = {"train": [], "val": [], "test": []}
+
+        if self.split_manifest_dir is not None:
+            for split in res:
+                for scene_id in self._manifest_scene_ids(split):
+                    scene_root = Path(self.raw_dir) / scene_id
+                    for ply_path in sorted(scene_root.rglob("*.ply")):
+                        relative = ply_path.relative_to(self.raw_dir).with_suffix("")
+                        res[split].append(relative.as_posix())
+            return res
         
         # Scan raw_ply directory recursively for PLY files
         if not osp.exists(self.raw_dir):
@@ -122,11 +168,17 @@ class DIODEDataset(BaseDataset):
         pass
 
     def id_to_relative_raw_path(self, id: str) -> str:
+        if self.split_manifest_dir is not None:
+            return id + ".ply"
         tile = self.get_tile_from_path(id)
         base_id = tile[1] if tile is not None else id
         return osp.join(self.stage, base_id + ".ply")
 
     def processed_to_raw_path(self, processed_path: str) -> str:
+        if self.split_manifest_dir is not None:
+            prefix = osp.join(self.processed_dir, self.stage, self.pre_transform_hash)
+            rel_path = osp.relpath(processed_path, prefix)
+            return osp.join(self.raw_dir, osp.splitext(rel_path)[0] + ".ply")
         # Dynamically map the processed path structure back to raw_ply
         prefix = osp.join(self.processed_dir, self.stage, self.pre_transform_hash)
         rel_path = osp.relpath(processed_path, prefix)
@@ -172,6 +224,11 @@ class DIODEDataset(BaseDataset):
         label_path = raw_cloud_path.replace(".ply", "_labels.npy")
         if os.path.isfile(label_path):
             y = torch.from_numpy(np.load(label_path).astype(np.int64))
+            if self.taxonomy_mode == "amr10":
+                mapped = torch.full_like(y, self.num_classes)
+                for source_id, target_id in SOURCE_TO_AMR10.items():
+                    mapped[y == source_id] = target_id
+                y = mapped
             # Ensure labels are valid (0 to num_classes-1), map anything else to ignored
             y[y < 0] = self.num_classes
             y[y >= self.num_classes] = self.num_classes
