@@ -57,12 +57,13 @@ class MultiLoss(nn.Module):
         destination = super().state_dict(
             *args, destination=destination, prefix=prefix, keep_vars=keep_vars)
 
-        # Remove the 'weight' from the criteria
+        # Remove the 'weight' from the criteria if present
         for i in range(len(self)):
-            destination.pop(f"{prefix}criteria.{i}.weight")
+            destination.pop(f"{prefix}criteria.{i}.weight", None)
 
-        # Only save the global shared weight
-        destination[f"{prefix}weight"] = self.weight
+        # Only save the global shared weight if present
+        if self.weight is not None:
+            destination[f"{prefix}weight"] = self.weight
 
         return destination
 

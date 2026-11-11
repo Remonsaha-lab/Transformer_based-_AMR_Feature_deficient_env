@@ -733,6 +733,8 @@ class SemanticSegmentationModule(LightningModule):
         self._on_train_epoch_end(
             cm=self.train_cm,
             metric_category='superpoints_semantic_prediction')
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def _on_train_epoch_end(
             self,
@@ -1035,6 +1037,8 @@ class SemanticSegmentationModule(LightningModule):
             oa_best=self.val_oa_best,
             macc_best=self.val_macc_best)
         self._s2_active_learning_export('val')
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def on_test_start(self) -> None:
         # Initialize the submission directory based on the time of the

@@ -4,6 +4,7 @@ defaults:
   - /datamodule/partition/diode_ezsp.yaml # Partition parameters
   - /datamodule/semantic/default_ezsp.yaml # Semantic task parameters for EZ-SP
 
+pretrained_cnn_ckpt_path: ${paths.root_dir}/logs/ezsp_diode_encoder_v3_full/runs/2026-07-04_12-31-47/checkpoints/last.ckpt
 pretrained_cnn_dim_without_in_dim: [32, 32, 32]
 pretrained_cnn_kernel_size: 3
 
@@ -17,3 +18,9 @@ partition_hf:
 post_cnn_point_hf:
   - 'elevation'
   - 'rgb'
+
+# GPU Memory Safeguards for 6GB GPUs (down from 32GB server defaults)
+sample_graph_k: 2
+sample_graph_max_nodes: 4000
+max_num_nodes: 12000
+max_num_edges: 250000

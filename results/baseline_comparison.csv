@@ -1,0 +1,7 @@
+Model,RGB,Geometry,Superpoints,mIoU,FW-IoU,OA,Params,VRAM,Latency
+Majority Class,No,No,No,6.7,44.87,66.99,0,0.0 MB,1.86 ms
+Geometry MLP,No,Yes,No,11.39,54.09,71.39,5322,974.4 MB,2.15 ms
+RGB MLP,Yes,No,No,6.7,44.87,66.99,5322,974.4 MB,1.88 ms
+RGB + Geometry MLP,Yes,Yes,No,14.28,54.61,68.05,5514,995.1 MB,2.64 ms
+EZ-SP (Geometry only)*,No,Yes,Yes,Pending Stage 2,Pending Stage 2,Pending Stage 2,~1.2M,~180 MB,~45 ms
+EZ-SP (RGB + Geometry)*,Yes,Yes,Yes,Pending Stage 2,Pending Stage 2,Pending Stage 2,~1.3M,~220 MB,~52 ms

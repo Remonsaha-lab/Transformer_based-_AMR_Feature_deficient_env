@@ -41,17 +41,17 @@ class WeightedFocalLoss(nn.NLLLoss):
             ignore_index (int): class label to ignore.
                 Defaults to -100.
         """
-        if reduction not in ('mean', 'none'):
+        if reduction not in ('mean', 'sum', 'none'):
             raise ValueError(
-                'Reduction must be one of: "mean", "none".')
+                'Reduction must be one of: "mean", "sum", "none".')
 
-        super().__init__(reduction=reduction, ignore_index=ignore_index,weight=weight)
+        super().__init__(reduction=reduction, ignore_index=ignore_index, weight=weight)
 
         self.gamma = gamma
 
     def __repr__(self):
         arg_keys = ['weight', 'gamma', 'ignore_index', 'reduction']
-        arg_vals = [self.__dict__[k] for k in arg_keys]
+        arg_vals = [getattr(self, k, None) for k in arg_keys]
         arg_strs = [f'{k}={v!r}' for k, v in zip(arg_keys, arg_vals)]
         arg_str = ', '.join(arg_strs)
         return f'{type(self).__name__}({arg_str})'
@@ -83,10 +83,9 @@ class WeightedFocalLoss(nn.NLLLoss):
         # target labels
         y = y.long()
 
-        # Convert per-item weights to [0, 1] weights
-        if w is None:
-            w = torch.ones_like(y).float()
-        w = w / w.sum()
+        # Format per-item weights if provided
+        if w is not None:
+            w = w.float()
 
         if x.ndim > 2:
             # (N, C, d1, d2, ..., dK) --> (N * d1 * ... * dK, C)
@@ -95,41 +94,47 @@ class WeightedFocalLoss(nn.NLLLoss):
             # (N, d1, d2, ..., dK) --> (N * d1 * ... * dK,)
             y = y.view(-1)
             # (N, d1, d2, ..., dK) --> (N * d1 * ... * dK,)
-            w = w.view(-1)
+            if w is not None:
+                w = w.view(-1)
 
         unignored_mask = y != self.ignore_index
         y_original_shape = y.shape
-        y = y[unignored_mask]
-        if len(y) == 0:
-            return torch.tensor(0., device=x.device)
-        x = x[unignored_mask]
-        w = w[unignored_mask]
+        y_valid = y[unignored_mask]
+        if len(y_valid) == 0:
+            if self.reduction == 'none':
+                return torch.zeros(y_original_shape, dtype=x.dtype, device=x.device)
+            return torch.tensor(0.0, dtype=x.dtype, device=x.device)
 
-        # compute weighted cross entropy term: -weight * log(pt)
-        # (weight is already part of super().NLLLoss)
-        log_p = F.log_softmax(x, dim=-1)
-        ce = super().forward(log_p, y)
+        x_valid = x[unignored_mask]
+        w_valid = w[unignored_mask] if w is not None else None
 
-        # get true class column from each row
-        log_pt = log_p.gather(dim=1, index=y.view(-1, 1)).squeeze()
+        # Element-wise cross entropy with class weights
+        log_p = F.log_softmax(x_valid, dim=-1)
+        ce = F.nll_loss(log_p, y_valid, weight=self.weight, reduction='none')
 
-        # compute focal term: (1 - pt)^gamma
-        pt = log_pt.exp()
-        focal_term = (1 - pt) ** self.gamma
-
-        # the full loss: -weight * ((1 - pt)^gamma) * log(pt)
+        # Focal modulation term: (1 - pt)^gamma
+        log_pt = log_p.gather(dim=1, index=y_valid.view(-1, 1)).squeeze(-1)
+        pt = log_pt.exp().clamp(min=1e-8, max=1.0)
+        focal_term = (1.0 - pt) ** self.gamma
         loss = focal_term * ce
 
-        # Apply the per-item weighting
-        loss = loss * w
-
         if self.reduction == 'none':
-            # Create a tensor of zeros with original shape and fill valid positions
-            loss_with_original_shape = torch.zeros(y_original_shape, dtype=torch.float, device=x.device)
+            if w_valid is not None:
+                loss = loss * w_valid
+            loss_with_original_shape = torch.zeros(y_original_shape, dtype=loss.dtype, device=x.device)
             loss_with_original_shape[unignored_mask] = loss
             return loss_with_original_shape
 
-        return loss.sum()
+        if w_valid is not None:
+            w_norm = w_valid.float() / (w_valid.sum() + 1e-8)
+            return (loss * w_norm).sum() if self.reduction == 'mean' else (loss * w_valid).sum()
+
+        if self.reduction == 'mean':
+            return loss.mean()
+        elif self.reduction == 'sum':
+            return loss.sum()
+        else:
+            return loss.mean()
 
 
 def weighted_focal_loss(

@@ -17,14 +17,20 @@ datamodule:
 trainer:
   max_epochs: 100
   check_val_every_n_epoch: 5
+  precision: 16-mixed
 
 model:
+  freeze_cnn: true
+  gc_every_n_steps: 1
   optimizer:
     lr: 0.01
     weight_decay: 1e-2
+  scheduler:
+    num_warmup: 5
 
 logger:
   wandb:
     project: diode_baselines
     name: ezsp-amr10-baseline
+    offline: true
 

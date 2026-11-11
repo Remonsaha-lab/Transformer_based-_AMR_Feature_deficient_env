@@ -1,0 +1,41 @@
+# @package _global_
+# Phase 4 Loss Ablation: Median-Frequency Balanced Cross-Entropy
+
+defaults:
+  - /model/semantic/spt-3.yaml
+  - /model/semantic/_point_cnn.yaml
+  - /experiment/semantic/default_ezsp.yaml
+  - override /datamodule: semantic/diode_ezsp.yaml
+  - override /trainer: gpu.yaml
+
+datamodule:
+  num_classes: 10
+  taxonomy_mode: amr10
+  split_manifest_dir: active_learning/splits
+  train_on_val: false
+
+model:
+  freeze_cnn: true
+  gc_every_n_steps: 1
+  weighted_loss: true
+  weighted_loss_smooth: 'median'
+  criterion:
+    _target_: torch.nn.CrossEntropyLoss
+    ignore_index: ${datamodule.num_classes}
+  optimizer:
+    lr: 0.01
+    weight_decay: 1e-4
+  scheduler:
+    num_warmup: 5
+
+trainer:
+  max_epochs: 50
+  check_val_every_n_epoch: 5
+  precision: 16-mixed
+
+logger:
+  wandb:
+    project: diode_ablations
+    name: loss-median-freq-ce
+    offline: true
+

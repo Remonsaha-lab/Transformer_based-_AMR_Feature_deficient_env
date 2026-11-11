@@ -1110,12 +1110,18 @@ class BaseDataset(InMemoryDataset):
             f"The following clouds have more than 1 instance of for a stuff " \
             f"or void class:\n{problematic_clouds}"
 
-    def get_class_weight(self, smooth: str='sqrt') -> torch.Tensor:
+    def get_class_weight(self, smooth: str = 'sqrt', beta: float = 0.999) -> torch.Tensor:
         """Compute class weights based on the labels distribution in the
         dataset. Optionally a 'smooth' function may be passed to
         smoothen the weights' statistics.
+        Supported smooth modes:
+          - None: raw inverse frequency: 1 / (counts + 1)
+          - 'sqrt': square-root smoothed inverse frequency: 1 / (sqrt(counts) + 1)
+          - 'log': log smoothed inverse frequency: 1 / (log(counts) + 1)
+          - 'median': median frequency balancing: median(freq) / freq
+          - 'effective' or 'cb': class-balanced effective number of samples (Cui et al., CVPR 2019)
         """
-        assert smooth in [None, 'sqrt', 'log']
+        assert smooth in [None, 'sqrt', 'log', 'median', 'effective', 'cb']
 
         # Read the first NAG just to know how many levels we have in the
         # preprocessed NAGs.
@@ -1154,17 +1160,38 @@ class BaseDataset(InMemoryDataset):
                         non_fp_to_long=True).y
             counts += y.sum(dim=0)[:self.num_classes]
 
-        # Compute the class weights. Optionally, a 'smooth' function may
-        # be applied to smoothen the weights statistics
-        if smooth == 'sqrt':
-            counts = counts.sqrt()
-        if smooth == 'log':
-            counts = counts.log()
+        # Compute class weights based on requested smoothing / balancing strategy
+        if smooth == 'median':
+            valid_mask = counts > 0
+            if not valid_mask.any():
+                weights = torch.ones(self.num_classes) / self.num_classes
+                return weights
+            total_points = counts.sum().clamp(min=1.0)
+            frequencies = counts / total_points
+            median_freq = frequencies[valid_mask].median()
+            weights = torch.zeros(self.num_classes)
+            weights[valid_mask] = median_freq / frequencies[valid_mask].clamp(min=1e-8)
+            weights /= weights.sum()
+            return weights
+        elif smooth in ['effective', 'cb']:
+            valid_mask = counts > 0
+            if not valid_mask.any():
+                weights = torch.ones(self.num_classes) / self.num_classes
+                return weights
+            effective_num = 1.0 - torch.pow(beta, counts[valid_mask])
+            weights = torch.zeros(self.num_classes)
+            weights[valid_mask] = (1.0 - beta) / effective_num.clamp(min=1e-8)
+            weights /= weights.sum()
+            return weights
+        else:
+            if smooth == 'sqrt':
+                counts = counts.sqrt()
+            elif smooth == 'log':
+                counts = counts.log()
 
-        weights = 1 / (counts + 1)
-        weights /= weights.sum()
-
-        return weights
+            weights = 1 / (counts + 1)
+            weights /= weights.sum()
+            return weights
 
     def __len__(self) -> int:
         """Number of clouds in the dataset."""
